@@ -49,6 +49,18 @@ fun SleepSession.hasEstimatedStages(): Boolean {
 }
 
 /**
+ * Verifica se os estágios de sono desta sessão são válidos.
+ * Estágios são considerados válidos se a sessão tiver estágios definidos
+ * ou se as porcentagens dos estágios forem maiores que zero.
+ * 
+ * @return true se os estágios são válidos, false caso contrário
+ */
+fun SleepSession.hasValidStages(): Boolean {
+    return stages.isNotEmpty() || 
+           (deepSleepPercentage > 0 && remSleepPercentage > 0 && lightSleepPercentage > 0)
+}
+
+/**
  * Cria uma análise diária simplificada a partir de uma sessão de sono
  */
 fun SleepSession.toDailyAnalysis(): DailyAnalysis {

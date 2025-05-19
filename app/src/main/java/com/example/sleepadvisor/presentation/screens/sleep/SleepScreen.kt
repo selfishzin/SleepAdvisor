@@ -349,7 +349,7 @@ fun LastSleepCard(session: SleepSession?, uiState: SleepUiState, modifier: Modif
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = String.format("Você dormiu por %.1f horas", session.duration.toHours().toFloat()),
+                text = String.format("Você dormiu por %dh %02dmin", session.duration.toHours(), session.duration.toMinutesPart()),
                 style = MaterialTheme.typography.headlineSmall
             )
             Spacer(modifier = Modifier.height(4.dp))
@@ -446,7 +446,7 @@ fun SleepStagePercentage(
         }
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = String.format("%s: %.0f%%", label, percentage),
+            text = String.format("%s: %d%%", label, percentage.toInt()),
             style = MaterialTheme.typography.bodySmall,
             textAlign = TextAlign.Center
         )

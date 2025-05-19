@@ -269,11 +269,15 @@ class AnalyzeSleepQualityUseCase @Inject constructor() {
         val recommendations = mutableListOf<String>()
         
         // Recomendações baseadas nos estágios do sono
-        if (session.deepSleepPercentage < 15.0) {
+        // Verifica se os estágios do sono são válidos (não são zero quando deveriam ter valores)
+        val hasValidStages = session.stages.isNotEmpty() || 
+                           (session.deepSleepPercentage > 0 && session.remSleepPercentage > 0 && session.lightSleepPercentage > 0)
+        
+        if (hasValidStages && session.deepSleepPercentage < 15.0) {
             recommendations.add("Para aumentar o sono profundo: mantenha o quarto fresco (18-20°C), evite álcool antes de dormir e considere exercícios físicos durante o dia.")
         }
         
-        if (session.remSleepPercentage < 15.0) {
+        if (hasValidStages && session.remSleepPercentage < 15.0) {
             recommendations.add("Para melhorar o sono REM: mantenha horários regulares de sono, evite cafeína após o meio-dia e pratique técnicas de relaxamento antes de dormir.")
         }
         
@@ -316,16 +320,17 @@ class AnalyzeSleepQualityUseCase @Inject constructor() {
         
         // Seleciona um fato baseado nos dados de sono
         return when {
-            session.remSleepPercentage > 25 -> 
+            // Verifica se os estágios do sono são válidos (não são zero quando deveriam ter valores)
+            session.hasValidStages() && session.remSleepPercentage > 25 -> 
                 "Você teve uma excelente quantidade de sono REM (${session.remSleepPercentage.toInt()}%). O sono REM é essencial para a consolidação da memória e criatividade."
             
-            session.deepSleepPercentage > 25 -> 
+            session.hasValidStages() && session.deepSleepPercentage > 25 -> 
                 "Você teve uma excelente quantidade de sono profundo (${session.deepSleepPercentage.toInt()}%). O sono profundo é quando ocorre a maior parte da recuperação física."
             
-            session.deepSleepPercentage < 15 -> 
+            session.hasValidStages() && session.deepSleepPercentage < 15 && session.deepSleepPercentage > 0 -> 
                 "Você teve apenas ${session.deepSleepPercentage.toInt()}% de sono profundo. O sono profundo é essencial para a recuperação física e imunidade."
             
-            session.remSleepPercentage < 15 -> 
+            session.hasValidStages() && session.remSleepPercentage < 15 && session.remSleepPercentage > 0 -> 
                 "Você teve apenas ${session.remSleepPercentage.toInt()}% de sono REM. O sono REM é importante para a saúde mental e processamento emocional."
             
             session.duration.toHours() > 9 -> 
