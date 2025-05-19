@@ -1,0 +1,379 @@
+package com.example.sleepadvisor.data.repository
+
+import android.util.Log
+import androidx.health.connect.client.HealthConnectClient
+import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.SleepSessionRecord
+import androidx.health.connect.client.records.SleepStageRecord
+import androidx.health.connect.client.request.ReadRecordsRequest
+import androidx.health.connect.client.time.TimeRangeFilter
+import com.example.sleepadvisor.data.HealthConnectRepository
+import com.example.sleepadvisor.data.local.dao.ManualSleepSessionDao
+import com.example.sleepadvisor.data.local.entity.ManualSleepSessionEntity
+import com.example.sleepadvisor.domain.model.SleepSession
+import com.example.sleepadvisor.domain.model.SleepStage
+import com.example.sleepadvisor.domain.model.SleepStageType
+import com.example.sleepadvisor.domain.repository.SleepRepository
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.LocalDateTime
+import java.util.UUID
+import javax.inject.Inject
+import java.time.LocalDate
+import java.time.LocalTime
+
+/**
+ * Implementação do repositório de sono que combina dados do Health Connect
+ * com dados manuais armazenados no banco de dados local
+ */
+class SleepRepositoryImpl @Inject constructor(
+    private val healthConnectClient: HealthConnectClient,
+    private val healthConnectRepository: HealthConnectRepository,
+    private val manualSleepSessionDao: ManualSleepSessionDao
+) : SleepRepository {
+
+    private val permissions = setOf(
+        HealthPermission.getReadPermission(SleepSessionRecord::class),
+        HealthPermission.getReadPermission(SleepStageRecord::class),
+        HealthPermission.getReadPermission(HeartRateRecord::class)
+    )
+
+    /**
+     * Obtém todas as sessões de sono (automáticas e manuais) dentro de um intervalo de tempo
+     * Combina os dados do Health Connect com os dados manuais do banco local
+     * 
+     * @param startTime Data e hora de início do intervalo de busca
+     * @param endTime Data e hora de fim do intervalo de busca
+     * @return Flow de lista de sessões de sono, ordenadas por data de início decrescente
+     */
+    override suspend fun getSleepSessions(
+        startTime: ZonedDateTime,
+        endTime: ZonedDateTime
+    ): Flow<List<SleepSession>> {
+        return combine(
+            getHealthConnectSessions(startTime, endTime),
+            getManualSessions(startTime, endTime)
+        ) { healthConnectSessions, manualSessions ->
+            (healthConnectSessions + manualSessions)
+                .sortedByDescending { it.startTime }
+        }.catch { error ->
+            Log.e(TAG, "Erro ao buscar sessões de sono: ${error.message}", error)
+            emit(emptyList())
+        }
+    }
+
+    /**
+     * Busca sessões de sono do Health Connect
+     */
+    private fun getHealthConnectSessions(
+        startTimeZoned: ZonedDateTime,
+        endTimeZoned: ZonedDateTime
+    ): Flow<List<SleepSession>> = flow {
+        try {
+            val request = ReadRecordsRequest(
+                recordType = SleepSessionRecord::class,
+                timeRangeFilter = TimeRangeFilter.between(startTimeZoned.toInstant(), endTimeZoned.toInstant())
+            )
+            val sessionsResponse = healthConnectClient.readRecords(request)
+            
+            val domainSleepSessions = mutableListOf<SleepSession>()
+
+            for (sessionRecord in sessionsResponse.records) {
+                val hrStartTimeZoned = ZonedDateTime.ofInstant(sessionRecord.startTime, ZoneId.systemDefault())
+                val hrEndTimeZoned = ZonedDateTime.ofInstant(sessionRecord.endTime, ZoneId.systemDefault())
+
+                val heartRateSamples: List<HeartRateRecord.Sample> = try {
+                    healthConnectRepository.readHeartRateData(hrStartTimeZoned, hrEndTimeZoned).first()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Erro ao buscar frequência cardíaca para sessão ${sessionRecord.metadata.id}", e)
+                    emptyList()
+                }
+
+                val mappedStages = sessionRecord.stages.map { stageRecord ->
+                    SleepStage(
+                        startTime = stageRecord.startTime,
+                        endTime = stageRecord.endTime,
+                        type = mapHcStageToDomainStage(stageRecord.stage)
+                    )
+                }
+
+                val wakeCountFromStages = mappedStages.count { it.type == SleepStageType.AWAKE }
+                
+                domainSleepSessions.add(
+                    SleepSession(
+                        id = sessionRecord.metadata.id,
+                        startTime = sessionRecord.startTime,
+                        endTime = sessionRecord.endTime,
+                        title = sessionRecord.title,
+                        notes = sessionRecord.notes,
+                        stages = mappedStages,
+                        wakeDuringNightCount = wakeCountFromStages,
+                        heartRateSamples = heartRateSamples,
+                        source = "Health Connect"
+                    )
+                )
+            }
+            emit(domainSleepSessions)
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao ler sessões do Health Connect: ${e.message}", e)
+            emit(emptyList())
+        }
+    }
+
+    /**
+     * Converte o tipo de estágio do Health Connect para o tipo do domínio.
+     */
+    private fun mapHcStageToDomainStage(hcStage: Int): SleepStageType {
+        return when (hcStage) {
+            SleepStageRecord.STAGE_TYPE_AWAKE -> SleepStageType.AWAKE
+            SleepStageRecord.STAGE_TYPE_SLEEPING -> SleepStageType.UNKNOWN
+            SleepStageRecord.STAGE_TYPE_OUT_OF_BED -> SleepStageType.AWAKE
+            SleepStageRecord.STAGE_TYPE_LIGHT -> SleepStageType.LIGHT
+            SleepStageRecord.STAGE_TYPE_DEEP -> SleepStageType.DEEP
+            SleepStageRecord.STAGE_TYPE_REM -> SleepStageType.REM
+            else -> SleepStageType.UNKNOWN
+        }
+    }
+
+    /**
+     * Busca sessões de sono manuais do banco de dados local
+     */
+    private fun getManualSessions(
+        startTime: ZonedDateTime,
+        endTime: ZonedDateTime
+    ): Flow<List<SleepSession>> {
+        return manualSleepSessionDao.getSleepSessionsBetween(startTime, endTime)
+            .map { entities ->
+                entities.map { entity ->
+                    mapEntityToSleepSession(entity)
+                }
+            }
+            .catch { error ->
+                Log.e(TAG, "Erro ao buscar sessões manuais: ${error.message}", error)
+                emit(emptyList())
+            }
+    }
+
+    /**
+     * Converte uma entidade ManualSleepSessionEntity para o modelo de domínio SleepSession
+     */
+    private fun mapEntityToSleepSession(entity: ManualSleepSessionEntity): SleepSession {
+        return SleepSession(
+            id = entity.id,
+            startTime = entity.startTime.toInstant(),
+            endTime = entity.endTime.toInstant(),
+            notes = entity.notes,
+            stages = emptyList(),
+            wakeDuringNightCount = entity.wakeDuringNightCount,
+            source = "Manual"
+        )
+    }
+
+    /**
+     * Obtém a última sessão de sono registrada (automática ou manual)
+     */
+    override suspend fun getLastSleepSession(): Flow<SleepSession?> = flow {
+        try {
+            emit(null)
+
+            val endTime = ZonedDateTime.now()
+            val startTime = endTime.minusDays(7)
+            
+            var mostRecentSession: SleepSession? = null
+
+            getSleepSessions(startTime, endTime).collect { sessions ->
+                val currentMostRecent = sessions.maxByOrNull { it.startTime }
+                if (mostRecentSession == null || (currentMostRecent != null && currentMostRecent.startTime.isAfter(mostRecentSession!!.startTime))) {
+                    mostRecentSession = currentMostRecent
+                }
+                emit(mostRecentSession)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao buscar última sessão de sono: ${e.message}", e)
+            emit(null)
+        }
+    }
+
+    /**
+     * Busca uma sessão de sono específica pelo ID
+     */
+    override suspend fun getSleepSessionById(id: String): SleepSession? {
+        manualSleepSessionDao.getSleepSessionById(id)?.let {
+            return mapEntityToSleepSession(it)
+        }
+        
+        return try {
+            val sessionRecord = healthConnectClient.readRecord(SleepSessionRecord::class, id).record
+            
+            val hrStartTimeZoned = ZonedDateTime.ofInstant(sessionRecord.startTime, ZoneId.systemDefault())
+            val hrEndTimeZoned = ZonedDateTime.ofInstant(sessionRecord.endTime, ZoneId.systemDefault())
+
+            val heartRateSamples: List<HeartRateRecord.Sample> = try {
+                healthConnectRepository.readHeartRateData(hrStartTimeZoned, hrEndTimeZoned).first()
+            } catch (e: Exception) {
+                Log.e(TAG, "Erro ao buscar frequência cardíaca para sessão $id", e)
+                emptyList()
+            }
+
+            val mappedStages = sessionRecord.stages.map { stageRecord ->
+                SleepStage(
+                    startTime = stageRecord.startTime,
+                    endTime = stageRecord.endTime,
+                    type = mapHcStageToDomainStage(stageRecord.stage)
+                )
+            }
+            val wakeCountFromStages = mappedStages.count { it.type == SleepStageType.AWAKE }
+
+            SleepSession(
+                id = sessionRecord.metadata.id,
+                startTime = sessionRecord.startTime,
+                endTime = sessionRecord.endTime,
+                title = sessionRecord.title,
+                notes = sessionRecord.notes,
+                stages = mappedStages,
+                wakeDuringNightCount = wakeCountFromStages,
+                heartRateSamples = heartRateSamples,
+                source = "Health Connect"
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao buscar sessão de sono do HC pelo ID $id: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Adiciona uma sessão de sono manual ao banco de dados
+     */
+    override suspend fun addManualSleepSession(
+        startTime: ZonedDateTime,
+        endTime: ZonedDateTime,
+        sleepType: String?,
+        notes: String?,
+        wakeCount: Int
+    ): SleepSession {
+        val id = UUID.randomUUID().toString()
+        val entity = ManualSleepSessionEntity(
+            id = id,
+            startTime = startTime,
+            endTime = endTime,
+            notes = notes,
+            wakeDuringNightCount = wakeCount
+        )
+        manualSleepSessionDao.insertSleepSession(entity)
+        
+        return SleepSession(
+            id = id,
+            startTime = startTime.toInstant(),
+            endTime = endTime.toInstant(),
+            source = "MANUAL",
+            notes = notes,
+            wakeDuringNightCount = wakeCount,
+            stages = emptyList(),
+            title = sleepType ?: "Sono Manual"
+        )
+    }
+
+    /**
+     * Deleta uma sessão de sono manual do banco de dados
+     */
+    override suspend fun deleteManualSleepSession(session: SleepSession) {
+        manualSleepSessionDao.deleteSleepSessionById(session.id)
+    }
+
+    /**
+     * Atualiza uma sessão de sono manual existente.
+     */
+    override suspend fun updateManualSleepSession(session: SleepSession) {
+        val entity = ManualSleepSessionEntity(
+            id = session.id,
+            startTime = session.startTime.atZone(ZoneId.systemDefault()),
+            endTime = session.endTime.atZone(ZoneId.systemDefault()),
+            notes = session.notes,
+            wakeDuringNightCount = session.wakeDuringNightCount,
+            lightSleepPercentage = session.lightSleepPercentage,
+            deepSleepPercentage = session.deepSleepPercentage,
+            remSleepPercentage = session.remSleepPercentage
+        )
+        manualSleepSessionDao.updateSleepSession(entity)
+    }
+
+    /**
+     * Atualiza as anotações de uma sessão de sono manual
+     */
+    override suspend fun updateManualSleepSessionNotes(sessionId: String, notes: String?) {
+        val session = getSleepSessionById(sessionId)
+        session?.let {
+            val entity = ManualSleepSessionEntity(
+                id = it.id,
+                startTime = it.startTime.atZone(ZoneId.systemDefault()),
+                endTime = it.endTime.atZone(ZoneId.systemDefault()),
+                notes = notes,
+                wakeDuringNightCount = it.wakeDuringNightCount,
+                lightSleepPercentage = it.lightSleepPercentage,
+                deepSleepPercentage = it.deepSleepPercentage,
+                remSleepPercentage = it.remSleepPercentage
+            )
+            manualSleepSessionDao.updateSleepSession(entity)
+        }
+    }
+
+    /**
+     * Verifica se o aplicativo tem as permissões necessárias
+     */
+    override suspend fun hasPermissions(): Boolean {
+        val permissions = setOf(
+            HealthPermission.getReadPermission(SleepSessionRecord::class),
+            HealthPermission.getWritePermission(SleepSessionRecord::class),
+            HealthPermission.getReadPermission(HeartRateRecord::class)
+        )
+        
+        val granted = healthConnectClient.permissionController.getGrantedPermissions()
+        return granted.containsAll(permissions)
+    }
+
+    /**
+     * Solicita as permissões necessárias
+     */
+    override suspend fun requestPermissions() {
+        // Esta função é apenas um placeholder, pois a solicitação real de permissões
+        // deve ser feita pela Activity/Fragment usando o PermissionController
+        Log.d(TAG, "Permissões devem ser solicitadas pela Activity/Fragment")
+    }
+    
+    /**
+     * Obtém sessões de sono manuais para uma data específica.
+     */
+    override fun getManualSleepSessionsForDate(date: LocalDate): Flow<List<SleepSession>> {
+        val startOfDay = date.atStartOfDay().atZone(ZoneId.systemDefault())
+        val endOfDay = date.plusDays(1).atStartOfDay().atZone(ZoneId.systemDefault())
+        
+        return manualSleepSessionDao.getSleepSessionsForDate(startOfDay, endOfDay)
+            .map { entities ->
+                entities.map { entity ->
+                    SleepSession(
+                        id = entity.id,
+                        startTime = entity.startTime.toInstant(),
+                        endTime = entity.endTime.toInstant(),
+                        source = "MANUAL",
+                        notes = entity.notes,
+                        wakeDuringNightCount = entity.wakeDuringNightCount,
+                        lightSleepPercentage = entity.lightSleepPercentage,
+                        deepSleepPercentage = entity.deepSleepPercentage,
+                        remSleepPercentage = entity.remSleepPercentage,
+                        stages = emptyList()
+                    )
+                }
+            }
+    }
+
+    companion object {
+        private const val TAG = "SleepRepositoryImpl"
+    }
+}
