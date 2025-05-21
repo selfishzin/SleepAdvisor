@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Lua crescente -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28C40.19,28 29,39.19 29,53C29,66.81 40.19,78 54,78C58.73,78 63.15,76.75 67,74.55C60.09,71.35 55.26,64.59 55.26,56.82C55.26,46.85 62.42,38.5 72,35.45C67.15,30.95 60.91,28 54,28Z"/>
+    
+    <!-- Estrelas -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M75,45L77.5,50L82.5,52.5L77.5,55L75,60L72.5,55L67.5,52.5L72.5,50L75,45Z"/>
+    
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M35,40L37,44L41,45.5L37,47L35,51L33,47L29,45.5L33,44L35,40Z"/>
+    
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,65L61.5,68L64.5,69L61.5,70L60,73L58.5,70L55.5,69L58.5,68L60,65Z"/>
+</vector>
