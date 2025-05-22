@@ -2,7 +2,6 @@ package com.example.sleepadvisor.presentation.screens.sleep
 
 import android.app.DatePickerDialog
 import android.app.TimePickerDialog
-import android.content.Intent // Mantido caso seja usado em outro lugar, senão pode ser removido
 import android.os.Build
 import android.util.Log
 import android.widget.Toast
@@ -21,50 +20,52 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.AddCircle
+import androidx.compose.material.icons.outlined.Analytics
 import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.FitnessCenter
+import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Sensors
+import androidx.compose.material.icons.outlined.SmartToy
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.StarHalf
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-// import androidx.compose.ui.platform.LocalLifecycleOwner // Não utilizado diretamente aqui
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.health.connect.client.HealthConnectClient // Não utilizado diretamente aqui
-import androidx.health.connect.client.PermissionController // Não utilizado diretamente aqui
-import androidx.health.connect.client.permission.HealthPermission // Não utilizado diretamente aqui
-import androidx.health.connect.client.records.SleepSessionRecord // Não utilizado diretamente aqui
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.sleepadvisor.domain.model.DailyAnalysis
-import com.example.sleepadvisor.domain.model.SleepSession // Assumindo que SleepSession.source é atualizado para SleepSource
+import com.example.sleepadvisor.domain.model.SleepSession
+import com.example.sleepadvisor.domain.model.SleepSource
 import com.example.sleepadvisor.domain.model.SleepStageType
-import com.example.sleepadvisor.domain.model.getStagePercentage
-// import com.example.sleepadvisor.domain.service.SleepAdvice // Não utilizado diretamente aqui
-// import com.example.sleepadvisor.presentation.screens.sleep.SleepAnalysisSummary // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.compose.chart.Chart // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.compose.chart.line.lineChart // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.core.axis.AxisPosition // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.core.component.shape.LineComponent // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.core.component.text.TextComponent // Não utilizado diretamente aqui
-// import com.patrykandpatrick.vico.core.entry.entryModelOf // Não utilizado diretamente aqui
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
-import java.time.OffsetDateTime // Assumindo que uiState.selectedStartTime/EndTime são deste tipo ou similar com isBefore/isEqual
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
-// import kotlin.time.Duration.Companion.minutes // Não utilizado diretamente aqui
-import kotlinx.coroutines.launch // Não utilizado diretamente aqui, mas rememberCoroutineScope sim
-import com.example.sleepadvisor.domain.model.SleepSource
-// data class SleepStage(..., val source: SleepSource, ...)
+import kotlinx.coroutines.launch
 
 @RequiresApi(Build.VERSION_CODES.S)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,7 +99,7 @@ fun SleepScreen(
                 actions = {
                     IconButton(onClick = { viewModel.onShowManualEntryDialog(true) }) {
                         Icon(
-                            imageVector = Icons.Default.AddCircleOutline,
+                            imageVector = Icons.Outlined.AddCircle,
                             contentDescription = "Adicionar registro manual"
                         )
                     }
@@ -111,7 +112,7 @@ fun SleepScreen(
         floatingActionButton = {
             if (uiState.sleepSessions.isNotEmpty()) {
                 FloatingActionButton(onClick = onNavigateToAnalysis) {
-                    Icon(Icons.Default.Analytics, contentDescription = "Ver Análise Detalhada de Tendências")
+                    Icon(Icons.Outlined.Analytics, contentDescription = "Ver Análise Detalhada de Tendências")
                 }
             }
         }
@@ -306,11 +307,11 @@ fun EmptySessionsMessage(onAddManualClick: () -> Unit, modifier: Modifier = Modi
 @Composable
 fun SourceIcon(source: SleepSource, modifier: Modifier = Modifier) {
     val icon = when (source) {
-        SleepSource.MANUAL -> Icons.Default.EditNote
-        SleepSource.HEALTH_CONNECT -> Icons.Default.Sensors
-        SleepSource.SIMULATION -> Icons.Default.SmartToy
-        SleepSource.UNKNOWN -> Icons.Default.HelpOutline
-        SleepSource.GOOGLE_FIT -> Icons.Default.FitnessCenter
+        SleepSource.MANUAL -> Icons.Outlined.EditNote
+        SleepSource.HEALTH_CONNECT -> Icons.Outlined.Sensors
+        SleepSource.SIMULATION -> Icons.Outlined.SmartToy
+        SleepSource.UNKNOWN -> Icons.Outlined.HelpOutline
+        SleepSource.GOOGLE_FIT -> Icons.Outlined.FitnessCenter
     }
     val tint = when (source) {
         SleepSource.MANUAL -> MaterialTheme.colorScheme.secondary
@@ -383,11 +384,11 @@ fun LastSleepCard(session: SleepSession?, uiState: SleepViewModel.SleepUiState, 
                 Spacer(modifier = Modifier.height(4.dp))
             }
 
-            if (session.stages.isNotEmpty()) {
+            if (session.hasValidStages()) {
                 SleepStageInfo(
-                    lightSleepPercentage = session.getStagePercentage(SleepStageType.LIGHT),
-                    deepSleepPercentage = session.getStagePercentage(SleepStageType.DEEP),
-                    remSleepPercentage = session.getStagePercentage(SleepStageType.REM),
+                    lightSleepPercentage = session.lightSleepPercentage,
+                    deepSleepPercentage = session.deepSleepPercentage,
+                    remSleepPercentage = session.remSleepPercentage,
                     isEstimated = sourceEnum == SleepSource.SIMULATION || session.stages.any { it.source == SleepSource.SIMULATION }
                 )
             } else {
@@ -411,6 +412,34 @@ fun QualitätsFarbe(score: Double): Color {
     }
 }
 
+/**
+ * Avalia a qualidade de um estágio do sono com base em sua porcentagem
+ * @return Pair contendo a cor e um ícone representando a qualidade
+ */
+private fun evaluateSleepStageQuality(
+    percentage: Double,
+    stageType: SleepStageType,
+    isLight: Boolean = false
+): Pair<Color, ImageVector> {
+    val (goodRange, idealRange, excellentRange) = when (stageType) {
+        SleepStageType.DEEP -> Triple(15.0..24.9, 20.0..24.9, 25.0..100.0)
+        SleepStageType.REM -> Triple(15.0..24.9, 20.0..24.9, 25.0..100.0)
+        SleepStageType.LIGHT -> Triple(45.0..65.0, 50.0..60.0, 50.0..60.0)
+        else -> Triple(0.0..100.0, 0.0..100.0, 0.0..100.0)
+    }
+
+    return when {
+        percentage in excellentRange -> 
+            Pair(Color(0xFF4CAF50), if (isLight) Icons.Outlined.Star else Icons.Filled.Star)
+        percentage in idealRange -> 
+            Pair(Color(0xFF8BC34A), if (isLight) Icons.Outlined.StarHalf else Icons.Outlined.Star)
+        percentage in goodRange -> 
+            Pair(Color(0xFFFFC107), if (isLight) Icons.Outlined.StarOutline else Icons.Outlined.StarHalf)
+        else -> 
+            Pair(Color(0xFFF44336), Icons.Default.Warning)
+    }
+}
+
 @Composable
 fun SleepStageInfo(
     lightSleepPercentage: Double,
@@ -419,16 +448,90 @@ fun SleepStageInfo(
     modifier: Modifier = Modifier,
     isEstimated: Boolean = false
 ) {
+    // Avalia a qualidade de cada estágio
+    val (lightColor, lightIcon) = evaluateSleepStageQuality(lightSleepPercentage, SleepStageType.LIGHT, true)
+    val (deepColor, deepIcon) = evaluateSleepStageQuality(deepSleepPercentage, SleepStageType.DEEP)
+    val (remColor, remIcon) = evaluateSleepStageQuality(remSleepPercentage, SleepStageType.REM)
+
     Column(modifier = modifier) {
         if (isEstimated) {
-            Text("(Estágios Estimados)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    "Estágios estimados com base em padrões de sono típicos", 
+                    style = MaterialTheme.typography.labelSmall, 
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
         }
+        
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-            SleepStagePercentage("Leve", lightSleepPercentage, Color(0xFF81D4FA), Modifier.weight(1f))
-            SleepStagePercentage("Profundo", deepSleepPercentage, Color(0xFF29B6F6), Modifier.weight(1f))
-            SleepStagePercentage("REM", remSleepPercentage, Color(0xFF0288D1), Modifier.weight(1f))
+            SleepStagePercentage(
+                label = "Leve", 
+                percentage = lightSleepPercentage, 
+                color = lightColor,
+                icon = lightIcon,
+                modifier = Modifier.weight(1f)
+            )
+            SleepStagePercentage(
+                label = "Profundo", 
+                percentage = deepSleepPercentage, 
+                color = deepColor,
+                icon = deepIcon,
+                modifier = Modifier.weight(1f)
+            )
+            SleepStagePercentage(
+                label = "REM", 
+                percentage = remSleepPercentage, 
+                color = remColor,
+                icon = remIcon,
+                modifier = Modifier.weight(1f)
+            )
         }
+        
+        // Legenda de qualidade
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            QualityIndicator("Ótimo", Color(0xFF4CAF50), Icons.Filled.Star)
+            QualityIndicator("Bom", Color(0xFF8BC34A), Icons.Outlined.Star)
+            QualityIndicator("Regular", Color(0xFFFFC107), Icons.Outlined.StarHalf)
+            QualityIndicator("Atenção", Color(0xFFF44336), Icons.Filled.Warning)
+        }
+    }
+}
+
+@Composable
+private fun QualityIndicator(
+    label: String,
+    color: Color,
+    icon: ImageVector
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 2.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(12.dp)
+        )
+        Spacer(modifier = Modifier.width(2.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -437,31 +540,86 @@ fun SleepStagePercentage(
     label: String,
     percentage: Double,
     color: Color,
+    icon: ImageVector,
     modifier: Modifier = Modifier
 ) {
+    val percentageInt = percentage.toInt()
+    val formattedPercentage = "$percentageInt%"
+    
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = modifier.padding(4.dp)
+        modifier = modifier.padding(horizontal = 4.dp, vertical = 4.dp)
     ) {
+        // Cabeçalho com ícone e label
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = color,
+                modifier = Modifier.size(16.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Medium
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        // Barra de progresso
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(20.dp)
-                .background(color.copy(alpha = 0.3f), shape = RoundedCornerShape(4.dp))
+                .height(12.dp)
+                .background(color.copy(alpha = 0.2f), shape = RoundedCornerShape(4.dp))
         ) {
+            // Barra de progresso preenchida
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(fraction = (percentage / 100f).toFloat())
-                    .background(color, shape = RoundedCornerShape(4.dp))
+                    .fillMaxWidth(fraction = (percentage / 100.0).toFloat().coerceIn(0f, 1f))
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                color.copy(alpha = 0.8f),
+                                color
+                            )
+                        ),
+                        shape = RoundedCornerShape(4.dp)
+                    )
+            )
+            
+            // Texto da porcentagem dentro da barra
+            if (percentage > 15) {
+                Text(
+                    text = formattedPercentage,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.Center)
+                )
+            }
+        }
+        
+        // Porcentagem abaixo da barra (se não couber dentro)
+        if (percentage <= 15) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = formattedPercentage,
+                style = MaterialTheme.typography.labelSmall,
+                color = color,
+                fontWeight = FontWeight.Bold
             )
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = String.format("%s: %d%%", label, percentage.toInt()),
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center
-        )
     }
 }
 
@@ -517,12 +675,12 @@ fun SleepSessionCard(
                 }
             }
 
-            if (session.stages.isNotEmpty()) {
+            if (session.hasValidStages()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 SleepStageInfo(
-                    lightSleepPercentage = session.getStagePercentage(SleepStageType.LIGHT),
-                    deepSleepPercentage = session.getStagePercentage(SleepStageType.DEEP),
-                    remSleepPercentage = session.getStagePercentage(SleepStageType.REM),
+                    lightSleepPercentage = session.lightSleepPercentage,
+                    deepSleepPercentage = session.deepSleepPercentage,
+                    remSleepPercentage = session.remSleepPercentage,
                     isEstimated = sourceEnum == SleepSource.SIMULATION || session.stages.any { it.source == SleepSource.SIMULATION }
                 )
             }

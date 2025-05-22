@@ -98,6 +98,12 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.7.0'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0'
     
+    // Accompanist
+    implementation 'com.google.accompanist:accompanist-systemuicontroller:0.34.0'
+    
+    // Runtime para anotações como @Immutable
+    implementation 'androidx.compose.runtime:runtime:1.6.1'
+    
     // Health Connect
     implementation 'androidx.health.connect:connect-client:1.1.0-alpha02'
     

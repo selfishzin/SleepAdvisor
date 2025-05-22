@@ -9,20 +9,151 @@ import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.NightsStay
 import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.sleepadvisor.domain.model.*
 import com.example.sleepadvisor.presentation.screens.sleep.SleepStageInfo
 import java.time.format.DateTimeFormatter
+
+// Cores para os estágios do sono
+private val DeepSleepColor = Color(0xFF4CAF50) // Verde
+private val REMSleepColor = Color(0xFF2196F3)  // Azul
+private val LightSleepColor = Color(0xFFFFC107) // Âmbar
+private val AwakeColor = Color(0xFF9E9E9E)     // Cinza
+
+// Componente SleepStagesCard simplificado
+@Composable
+private fun SleepStagesCard(
+    lightSleep: Float,
+    deepSleep: Float,
+    remSleep: Float,
+    awake: Float,
+    modifier: Modifier = Modifier
+) {
+    val total = (lightSleep + deepSleep + remSleep + awake).coerceAtLeast(1f) // Evitar divisão por zero
+    
+    // Normalizar valores para garantir que a soma seja 100%
+    val normalizedLight = (lightSleep / total * 100).coerceIn(0f, 100f)
+    val normalizedDeep = (deepSleep / total * 100).coerceIn(0f, 100f)
+    val normalizedRem = (remSleep / total * 100).coerceIn(0f, 100f)
+    val normalizedAwake = (awake / total * 100).coerceIn(0f, 100f)
+    
+    // Usar Card do Material3 em vez de SleepCard
+    Card(
+        modifier = modifier,
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Text(
+                text = "Estágios do sono",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Gráfico de barras simplificado
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Sono profundo
+                SleepStageBar(
+                    label = "Sono profundo",
+                    percentage = normalizedDeep,
+                    color = DeepSleepColor
+                )
+                
+                // Sono REM
+                SleepStageBar(
+                    label = "Sono REM",
+                    percentage = normalizedRem,
+                    color = REMSleepColor
+                )
+                
+                // Sono leve
+                SleepStageBar(
+                    label = "Sono leve",
+                    percentage = normalizedLight,
+                    color = LightSleepColor
+                )
+                
+                // Acordado
+                SleepStageBar(
+                    label = "Acordado",
+                    percentage = normalizedAwake,
+                    color = AwakeColor
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+    }
+}
+
+@Composable
+private fun SleepStageBar(
+    label: String,
+    percentage: Float,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            Text(
+                text = "${percentage.toInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        // Barra de progresso
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(percentage / 100f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(color)
+            )
+        }
+    }
+}
 
 /**
  * Card que exibe a análise de qualidade da última sessão de sono.
@@ -117,19 +248,34 @@ fun LastSessionQualityCard(
             Spacer(modifier = Modifier.height(12.dp))
             
             // Gráfico de estágios de sono (usando o mesmo componente da tela inicial)
-            SleepStageInfo(
-                lightSleepPercentage = session.lightSleepPercentage,
-                deepSleepPercentage = session.deepSleepPercentage,
-                remSleepPercentage = session.remSleepPercentage,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                isEstimated = session.hasEstimatedStages()
-            )
+            if (session.hasValidStages()) {
+                // Garantir que a soma não ultrapasse 100%
+                val total = (session.lightSleepPercentage + session.deepSleepPercentage + session.remSleepPercentage).coerceAtMost(100.0)
+                val awake = (100.0 - total).coerceIn(0.0, 100.0)
+                
+                SleepStagesCard(
+                    lightSleep = session.lightSleepPercentage.toFloat(),
+                    deepSleep = session.deepSleepPercentage.toFloat(),
+                    remSleep = session.remSleepPercentage.toFloat(),
+                    awake = awake.toFloat(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+            } else {
+                // Mostrar mensagem quando não houver dados de estágios
+                Text(
+                    text = "Nenhum dado de estágios de sono disponível para esta sessão.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                )
+            }
             
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            // Análise de texto como antes
+            // Análise de texto
             Text(
                 text = qualityAnalysis.stageAnalysis,
                 style = MaterialTheme.typography.bodyMedium,

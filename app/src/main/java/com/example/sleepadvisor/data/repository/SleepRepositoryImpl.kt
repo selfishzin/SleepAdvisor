@@ -229,9 +229,9 @@ class SleepRepositoryImpl @Inject constructor(
             wakeDuringNightCount = entity.wakeDuringNightCount,
             stages = emptyList(),
             efficiency = 0.0,
+            lightSleepPercentage = entity.lightSleepPercentage,
             deepSleepPercentage = entity.deepSleepPercentage,
             remSleepPercentage = entity.remSleepPercentage,
-            lightSleepPercentage = entity.lightSleepPercentage,
             heartRateSamples = emptyList()
         )
     }
@@ -249,7 +249,15 @@ class SleepRepositoryImpl @Inject constructor(
     override suspend fun getSleepSessionById(id: String): SleepSession? {
         return try {
             val entity = manualSleepSessionDao.getSleepSessionById(id)
-            entity?.let { mapEntityToSleepSession(it) }
+            entity?.let { 
+                val session = mapEntityToSleepSession(it)
+                // Garante que as porcentagens estejam calculadas
+                if (session.stages.isNotEmpty()) {
+                    session.calculateAndUpdateStagePercentages()
+                } else {
+                    session
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Erro ao buscar sessão por ID: ${e.message}", e)
             null

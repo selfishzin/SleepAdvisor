@@ -53,14 +53,21 @@ fun SleepSession.hasEstimatedStages(): Boolean {
 
 /**
  * Verifica se os estágios de sono desta sessão são válidos.
- * Estágios são considerados válidos se a sessão tiver estágios definidos
- * ou se as porcentagens dos estágios forem maiores que zero.
+ * Estágios são considerados válidos se:
+ * 1. A sessão tem estágios com duração total maior que zero, OU
+ * 2. As porcentagens dos estágios foram definidas explicitamente (maiores que zero)
  * 
  * @return true se os estágios são válidos, false caso contrário
  */
 fun SleepSession.hasValidStages(): Boolean {
-    return stages.isNotEmpty() || 
-           (deepSleepPercentage > 0 && remSleepPercentage > 0 && lightSleepPercentage > 0)
+    // Se não há estágios, verifica se as porcentagens foram definidas explicitamente
+    if (stages.isEmpty()) {
+        return lightSleepPercentage > 0 || deepSleepPercentage > 0 || remSleepPercentage > 0
+    }
+    
+    // Se há estágios, verifica se a soma das durações é maior que zero
+    val totalStageDuration = stages.sumOf { it.duration.seconds }
+    return totalStageDuration > 0
 }
 
 /**

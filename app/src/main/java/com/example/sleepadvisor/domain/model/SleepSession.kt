@@ -77,6 +77,45 @@ data class SleepSession(
                (deepSleepPercentage > 0 || remSleepPercentage > 0 || lightSleepPercentage > 0)
     }
 
+    /**
+     * Calcula e atualiza as porcentagens de cada estágio de sono com base nos estágios registrados.
+     * @return Nova instância de SleepSession com as porcentagens atualizadas
+     */
+    fun calculateAndUpdateStagePercentages(): SleepSession {
+        if (stages.isEmpty()) {
+            return this
+        }
+
+        val totalSleepDuration = stages.sumOf { it.duration.toMillis() }
+        
+        if (totalSleepDuration == 0L) {
+            return this
+        }
+
+        val stageDurations = stages.groupBy { it.type }
+            .mapValues { (_, stages) -> 
+                stages.sumOf { it.duration.toMillis() } 
+            }
+
+        val deepSleepMs = stageDurations[SleepStageType.DEEP] ?: 0L
+        val remSleepMs = stageDurations[SleepStageType.REM] ?: 0L
+        val lightSleepMs = stageDurations[SleepStageType.LIGHT] ?: 0L
+        val awakeMs = stageDurations[SleepStageType.AWAKE] ?: 0L
+
+        // Calcula as porcentagens
+        val deepSleepPercentage = (deepSleepMs.toDouble() / totalSleepDuration) * 100
+        val remSleepPercentage = (remSleepMs.toDouble() / totalSleepDuration) * 100
+        val lightSleepPercentage = (lightSleepMs.toDouble() / totalSleepDuration) * 100
+
+        return this.copy(
+            deepSleepPercentage = deepSleepPercentage,
+            remSleepPercentage = remSleepPercentage,
+            lightSleepPercentage = lightSleepPercentage,
+            // Calcula a eficiência como (tempo total de sono / tempo na cama) * 100
+            efficiency = ((totalSleepDuration - awakeMs).toDouble() / totalSleepDuration) * 100
+        )
+    }
+
     companion object {
         // O companion object agora está limpo de constantes de cálculo de pontuação.
         // Essas lógicas pertencem a serviços ou use cases.

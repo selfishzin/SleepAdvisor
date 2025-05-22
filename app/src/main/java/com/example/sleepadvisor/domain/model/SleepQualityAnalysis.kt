@@ -11,5 +11,13 @@ data class SleepQualityAnalysis(
     val durationAnalysis: String,            // Análise da duração total do sono
     val continuityAnalysis: String,          // Análise da continuidade do sono (despertares)
     val recommendations: List<String>,       // Recomendações personalizadas
-    val scientificFact: String               // Fato científico personalizado
-)
+    val scientificFact: String,              // Fato científico personalizado
+    val metrics: Map<String, Any> = emptyMap() // Métricas detalhadas da análise
+) {
+    /**
+     * Cria uma cópia desta análise com métricas adicionais
+     */
+    fun copyWithMetrics(additionalMetrics: Map<String, Any>): SleepQualityAnalysis {
+        return copy(metrics = this.metrics + additionalMetrics)
+    }
+}

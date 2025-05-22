@@ -21,12 +21,12 @@ data class SleepStage(
 /**
  * Tipos de estágio de sono possíveis.
  */
-enum class SleepStageType {
-    AWAKE,
-    LIGHT,
-    DEEP,
-    REM,
-    UNKNOWN, 
-    SLEEPING,
-    OUT_OF_BED
+enum class SleepStageType(val displayName: String) {
+    AWAKE("Acordado"),
+    LIGHT("Sono Leve"),
+    DEEP("Sono Profundo"),
+    REM("REM"),
+    UNKNOWN("Desconhecido"),
+    SLEEPING("Dormindo"),
+    OUT_OF_BED("Fora da Cama")
 }
