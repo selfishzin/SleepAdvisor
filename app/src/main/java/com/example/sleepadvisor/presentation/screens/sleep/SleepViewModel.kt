@@ -5,32 +5,34 @@ import androidx.lifecycle.viewModelScope
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.SleepSessionRecord
-import com.example.sleepadvisor.domain.model.SleepSession
-import com.example.sleepadvisor.domain.model.SleepStageType
-import com.example.sleepadvisor.domain.model.toDailyAnalysis
 import com.example.sleepadvisor.domain.model.DailyAnalysis
-import com.example.sleepadvisor.domain.usecase.GetSleepSessionsUseCase
+import com.example.sleepadvisor.domain.model.SleepSession
+import com.example.sleepadvisor.domain.model.SleepSource
+import com.example.sleepadvisor.domain.model.SleepStageType
+import com.example.sleepadvisor.domain.model.calculateAndUpdateStagePercentages
+import com.example.sleepadvisor.domain.model.toDailyAnalysis
 import com.example.sleepadvisor.domain.service.SleepAIService
 import com.example.sleepadvisor.domain.service.SleepAdvice
+import com.example.sleepadvisor.domain.usecase.GetSleepSessionsUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.Duration
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.ZonedDateTime
-import java.time.ZoneId
-import java.time.Duration
-import java.util.UUID
 import javax.inject.Inject
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
-import java.time.Instant
 import com.example.sleepadvisor.domain.repository.SleepRepository
 import kotlinx.coroutines.flow.catch
 import android.util.Log
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.temporal.ChronoField
 
 /**
@@ -127,11 +129,21 @@ class SleepViewModel @Inject constructor(
                             .filter { isNightSleep(it) }
                             .maxByOrNull { it.endTime }
 
+                        // Garantir que todos os percentuais de estágios de sono sejam calculados
+                        val sessionsWithCalculatedPercentages = consolidatedSessions.map { session ->
+                            session.calculateAndUpdateStagePercentages()
+                        }
+                        
+                        // Atualizar o lastNightSession para usar a versão com percentuais calculados
+                        val updatedLastNightSession = lastNightSession?.let { session ->
+                            sessionsWithCalculatedPercentages.find { it.id == session.id }
+                        }
+                        
                         _uiState.update { currentState ->
                             currentState.copy(
-                                sleepSessions = consolidatedSessions.sortedByDescending { it.startTime },
+                                sleepSessions = sessionsWithCalculatedPercentages.sortedByDescending { it.startTime },
                                 isLoading = false,
-                                lastSession = lastNightSession,
+                                lastSession = updatedLastNightSession,
                                 error = null,
                                 sessionAnalyses = sessionAnalyses
                             )
@@ -197,7 +209,9 @@ class SleepViewModel @Inject constructor(
         viewModelScope.launch {
             val startTimeToSave = _uiState.value.selectedStartTime
             val endTimeToSave = _uiState.value.selectedEndTime
-            val notes = _uiState.value.manualEntryNotes
+            val notesToSave = _uiState.value.manualEntryNotes
+            val wakeCountToSave = _uiState.value.wakeCount
+            val sessionToEdit = _uiState.value.editingSession
 
             if (startTimeToSave == null || endTimeToSave == null) {
                 _uiState.update { it.copy(error = "Horário de início e fim devem ser definidos.") }
@@ -209,32 +223,40 @@ class SleepViewModel @Inject constructor(
                 return@launch
             }
 
-            val sessionToEdit = _uiState.value.editingSession
-
-            val newSession = SleepSession(
-                id = sessionToEdit?.id ?: UUID.randomUUID().toString(),
-                startTime = startTimeToSave.toInstant(),
-                endTime = endTimeToSave.toInstant(),
-                notes = notes,
-                title = "Sono Manual", // Ou permitir que o usuário defina
-                stages = emptyList(), // Estágios não são definidos manualmente desta forma
-                efficiency = 0.0, // Pode ser calculado ou deixado como padrão
-                source = "Manual"
-            )
-
             try {
+                val newSession = SleepSession(
+                    id = sessionToEdit?.id ?: UUID.randomUUID().toString(),
+                    startTime = startTimeToSave.toInstant(),
+                    endTime = endTimeToSave.toInstant(),
+                    notes = notesToSave.ifBlank { null }, // Salvar null se vazio
+                    source = SleepSource.MANUAL,
+                    wakeDuringNightCount = wakeCountToSave,
+                    // title, stages, efficiency, etc., podem ter valores padrão ou não serem definidos para manual
+                    title = sessionToEdit?.title ?: "Sono Manual",
+                    stages = sessionToEdit?.stages ?: emptyList(),
+                    efficiency = sessionToEdit?.efficiency ?: 0.0,
+                    deepSleepPercentage = sessionToEdit?.deepSleepPercentage ?: 0.0,
+                    remSleepPercentage = sessionToEdit?.remSleepPercentage ?: 0.0,
+                    lightSleepPercentage = sessionToEdit?.lightSleepPercentage ?: 0.0,
+                    heartRateSamples = sessionToEdit?.heartRateSamples ?: emptyList()
+                )
+
                 if (sessionToEdit == null) {
-                    repository.addManualSleepSession(
-                        startTime = newSession.startTimeZoned,
-                        endTime = newSession.endTimeZoned,
-                        sleepType = null,
-                        notes = newSession.notes,
-                        wakeCount = newSession.wakeDuringNightCount
-                    )
+                    addSleepSession(newSession) // ViewModel's internal method
                 } else {
-                    repository.updateManualSleepSession(newSession)
+                    updateSleepSession(newSession) // ViewModel's internal method
                 }
-                _uiState.update { it.copy(showManualEntryDialog = false, editingSession = null, manualEntryNotes = "") } // Limpar estado
+                _uiState.update { it.copy(
+                    showManualEntryDialog = false,
+                    editingSession = null,
+                    selectedStartTime = null,
+                    selectedEndTime = null,
+                    manualEntryNotes = "",
+                    wakeCount = 0,
+                    addSessionSuccess = sessionToEdit == null,
+                    updateSessionSuccess = sessionToEdit != null,
+                    error = null // Limpar erro em caso de sucesso
+                ) }
                 loadConsolidatedSleepData() // Recarregar dados
             } catch (e: Exception) {
                 _uiState.update { it.copy(error = "Erro ao salvar sessão: ${e.message}") }
@@ -245,7 +267,7 @@ class SleepViewModel @Inject constructor(
     fun deleteSleepSession(session: SleepSession) {
         viewModelScope.launch {
             try {
-                if (session.source == "Health Connect") {
+                if (session.source == SleepSource.HEALTH_CONNECT) {
                     // Implementar a exclusão do Health Connect se necessário, ou impedir
                     _uiState.update { it.copy(error = "Não é possível excluir sessões do Health Connect por aqui.") }
                     return@launch
@@ -260,13 +282,16 @@ class SleepViewModel @Inject constructor(
     }
 
     fun onEditSession(session: SleepSession) {
-        if (session.source == "Manual") {
+        if (session.source == SleepSource.MANUAL) {
             _uiState.update { it.copy(
                 editingSession = session,
+                selectedDate = session.startTime.atZone(ZoneId.systemDefault()).toLocalDate(),
                 selectedStartTime = session.startTime.atZone(ZoneId.systemDefault()),
                 selectedEndTime = session.endTime.atZone(ZoneId.systemDefault()),
                 manualEntryNotes = session.notes ?: "",
-                showManualEntryDialog = true
+                wakeCount = session.wakeDuringNightCount,
+                showManualEntryDialog = true,
+                error = null // Limpar qualquer erro anterior ao abrir o diálogo
             ) }
         } else {
             _uiState.update { it.copy(error = "Apenas sessões manuais podem ser editadas.") }
@@ -274,37 +299,49 @@ class SleepViewModel @Inject constructor(
     }
 
     fun onDismissManualEntryDialog() {
-        _uiState.update { it.copy(showManualEntryDialog = false, editingSession = null, manualEntryNotes = "", selectedStartTime = null, selectedEndTime = null) }
+        // Limpa o estado relacionado ao diálogo de entrada manual
+        _uiState.update {
+            it.copy(
+                showManualEntryDialog = false,
+                editingSession = null,
+                selectedStartTime = null,
+                selectedEndTime = null,
+                manualEntryNotes = "",
+                wakeCount = 0,
+                selectedDate = _uiState.value.selectedDate ?: LocalDate.now() // Manter selectedDate ou resetar?
+                // Resetar selectedDate para hoje pode ser mais consistente: selectedDate = LocalDate.now()
+            )
+        }
     }
 
     fun onShowManualEntryDialog(show: Boolean) {
         if (!show) {
             onDismissManualEntryDialog() // Limpa o estado se estiver fechando
         } else {
-             // Prepara para uma nova entrada, ou pode ser preenchido por onEditSession
-            val now = ZonedDateTime.now()
-            val defaultStartTime = now.minusHours(8) // Sugestão inicial
-            _uiState.update { it.copy(
-                showManualEntryDialog = true,
-                editingSession = null, // Garante que é uma nova entrada
-                selectedDate = defaultStartTime.toLocalDate(),
-                selectedStartTime = defaultStartTime,
-                selectedEndTime = now, // Sugestão inicial
-                manualEntryNotes = ""
-            ) }
+            // Prepara para uma nova entrada, ou pode ser preenchido por onEditSession
+            // Se onEditSession foi chamado antes, editingSession já estará populado.
+            // Se não, é uma nova entrada.
+            if (_uiState.value.editingSession == null) { // Garante que é uma nova entrada se não estiver editando
+                val now = ZonedDateTime.now()
+                val defaultStartTime = now.minusHours(8) // Sugestão inicial
+                _uiState.update { it.copy(
+                    showManualEntryDialog = true,
+                    editingSession = null, // Garante que é uma nova entrada
+                    selectedDate = defaultStartTime.toLocalDate(),
+                    selectedStartTime = defaultStartTime,
+                    selectedEndTime = now, // Sugestão inicial
+                    manualEntryNotes = "",
+                    wakeCount = 0,
+                    error = null // Limpar qualquer erro anterior
+                ) }
+            } else {
+                // Se editingSession não for nulo, significa que onEditSession já preparou o estado.
+                // Apenas garantimos que o diálogo seja exibido.
+                _uiState.update { it.copy(showManualEntryDialog = true, error = null) }
+            }
         }
     }
 
-    private fun isNightSleep(session: SleepSession): Boolean {
-        val durationHours = session.duration.toHours()
-        val endHour = session.endTime.atZone(ZoneId.systemDefault()).hour
-        // Considera sono noturno se durar mais de 4 horas e terminar de manhã (ex: antes das 10h)
-        // ou se durar mais de 2h e terminar muito cedo (ex: antes das 5h - cochilo noturno)
-        return (durationHours >= 4 && endHour < 12) || (durationHours >=2 && endHour < 5)
-    }
-
-    // Outras funções de UI (navegação, mostradores de diálogo etc.) podem ser adicionadas aqui
-    
     /**
      * Limpa a mensagem de erro no estado da UI
      */
@@ -337,10 +374,16 @@ class SleepViewModel @Inject constructor(
                     id = UUID.randomUUID().toString(),
                     startTime = startDateTime.toInstant(),
                     endTime = endDateTime.toInstant(),
+                    source = SleepSource.MANUAL,
+                    title = "Sono Manual",
                     notes = notes,
-                    source = "Manual",
                     wakeDuringNightCount = wakeCount,
-                    efficiency = 0.0
+                    stages = emptyList(),
+                    efficiency = 0.0,
+                    deepSleepPercentage = 0.0,
+                    remSleepPercentage = 0.0,
+                    lightSleepPercentage = 0.0,
+                    heartRateSamples = emptyList()
                 )
                 
                 // Adicionar ao repositório
@@ -415,39 +458,31 @@ class SleepViewModel @Inject constructor(
     /**
      * Adiciona uma sessão de sono ao repositório
      */
-    private fun addSleepSession(session: SleepSession) {
-        viewModelScope.launch {
-            try {
-                // Extrair valores da sessão para passar para o método do repositório
-                val startTime = session.startTime.atZone(ZoneId.systemDefault())
-                val endTime = session.endTime.atZone(ZoneId.systemDefault())
-                val notes = session.notes
-                val wakeCount = session.wakeDuringNightCount
-                
-                repository.addManualSleepSession(
-                    startTime = startTime,
-                    endTime = endTime,
-                    notes = notes,
-                    wakeCount = wakeCount
-                )
-                loadSleepSessions()
-            } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Erro ao adicionar sessão: ${e.message}") }
-            }
+    private suspend fun addSleepSession(session: SleepSession) {
+        try {
+            val addedSession = repository.addManualSleepSession(
+                startTime = session.startTimeZoned,
+                endTime = session.endTimeZoned,
+                sleepType = session.title,
+                notes = session.notes,
+                wakeCount = session.wakeDuringNightCount
+            )
+            _uiState.update { it.copy(addSessionSuccess = true) }
+        } catch (e: Exception) {
+            _uiState.update { it.copy(error = "Erro ao adicionar sessão: ${e.message}") }
         }
     }
     
     /**
      * Atualiza uma sessão de sono existente no repositório
      */
-    private fun updateSleepSession(session: SleepSession) {
-        viewModelScope.launch {
-            try {
-                repository.updateManualSleepSession(session)
-                loadSleepSessions()
-            } catch (e: Exception) {
-                _uiState.update { it.copy(error = "Erro ao atualizar sessão: ${e.message}") }
-            }
+    private suspend fun updateSleepSession(session: SleepSession) {
+        try {
+            val updatedSession = repository.updateManualSleepSession(session)
+            _uiState.update { it.copy(updateSessionSuccess = true) }
+            loadSleepSessions()
+        } catch (e: Exception) {
+            _uiState.update { it.copy(error = "Erro ao atualizar sessão: ${e.message}") }
         }
     }
     
@@ -520,30 +555,106 @@ class SleepViewModel @Inject constructor(
             }
         }
     }
-}
 
-/**
- * Estado da UI para a tela de sono
- * Contém todos os dados necessários para renderizar a interface
- */
-data class SleepUiState(
-    val isLoading: Boolean = true,
-    val sleepSessions: List<SleepSession> = emptyList(),
-    val lastSession: SleepSession? = null,
-    val error: String? = null,
-    val hasPermissions: Boolean = true,
-    val sleepAdvice: SleepAdvice? = null, // Para as dicas geradas pela IA
-    val aiAdviceLoading: Boolean = false,
-    val sessionAnalyses: Map<String, DailyAnalysis> = emptyMap(), // Análises individuais
-    val showManualEntryDialog: Boolean = false,
-    val selectedDate: LocalDate? = LocalDate.now(),
-    val selectedStartTime: ZonedDateTime? = null,
-    val selectedEndTime: ZonedDateTime? = null,
-    val manualEntryNotes: String = "",
-    val editingSession: SleepSession? = null, // Para editar uma sessão manual existente
-    val addSessionSuccess: Boolean = false, // Indica se uma sessão foi adicionada com sucesso
-    val showDuplicateEntryDialog: Boolean = false, // Indica se deve mostrar diálogo de entrada duplicada
-    val isAddingManualSession: Boolean = false, // Indica se está no processo de adicionar uma sessão manual
-    val isLoadingEditingSession: Boolean = false, // Indica se está carregando uma sessão para edição
-    val currentEditingSession: SleepSession? = null // Sessão atual em edição
-)
+    private fun addManualSleepSessionFromDialog() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAddingManualSession = true) }
+            try {
+                val startDateTime = _uiState.value.selectedStartTime
+                val endDateTime = _uiState.value.selectedEndTime
+                val notes = _uiState.value.manualEntryNotes
+                val wakeCount = _uiState.value.wakeCount
+
+                if (startDateTime == null || endDateTime == null) {
+                    _uiState.update { it.copy(error = "Horário de início e fim devem ser definidos.", isAddingManualSession = false) }
+                    return@launch
+                }
+
+                if (endDateTime.isBefore(startDateTime) || endDateTime.isEqual(startDateTime)) {
+                    _uiState.update { it.copy(error = "O horário de término deve ser posterior ao horário de início.", isAddingManualSession = false) }
+                    return@launch
+                }
+
+                val editingSession = _uiState.value.editingSession
+                val newSession = SleepSession(
+                    id = editingSession?.id ?: UUID.randomUUID().toString(),
+                    startTime = startDateTime.toInstant(),
+                    endTime = endDateTime.toInstant(),
+                    source = SleepSource.MANUAL,
+                    title = editingSession?.title ?: "Sono Manual",
+                    notes = notes,
+                    wakeDuringNightCount = wakeCount,
+                    stages = editingSession?.stages ?: emptyList(),
+                    efficiency = editingSession?.efficiency ?: 0.0,
+                    deepSleepPercentage = editingSession?.deepSleepPercentage ?: 0.0,
+                    remSleepPercentage = editingSession?.remSleepPercentage ?: 0.0,
+                    lightSleepPercentage = editingSession?.lightSleepPercentage ?: 0.0,
+                    heartRateSamples = editingSession?.heartRateSamples ?: emptyList()
+                )
+
+                if (editingSession == null) {
+                    // Adicionar nova sessão
+                    repository.addManualSleepSession(
+                        startTime = startDateTime, // ZonedDateTime
+                        endTime = endDateTime,   // ZonedDateTime
+                        sleepType = newSession.title ?: "Sono Manual", // String?
+                        notes = newSession.notes, // String?
+                        wakeCount = newSession.wakeDuringNightCount // Int
+                    )
+                    _uiState.update { it.copy(addSessionSuccess = true) }
+                } else {
+                    // Atualizar sessão existente
+                    repository.updateManualSleepSession(newSession) // Espera SleepSession
+                    _uiState.update { it.copy(updateSessionSuccess = true) }
+                }
+                
+                _uiState.update { 
+                    it.copy(
+                        showManualEntryDialog = false, 
+                        editingSession = null, 
+                        manualEntryNotes = "", 
+                        selectedStartTime = null, 
+                        selectedEndTime = null, 
+                        wakeCount = 0
+                    )
+                }
+                loadConsolidatedSleepData() // Recarregar dados
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Erro ao salvar sessão: ${e.message}") }
+            } finally {
+                _uiState.update { it.copy(isAddingManualSession = false) }
+            }
+        }
+    }
+
+    private fun isNightSleep(session: SleepSession): Boolean {
+        // Considers night sleep if duration is more than 3 hours.
+        // You might want to add more sophisticated logic, e.g., checking start/end times.
+        val durationHours = session.duration.toHours()
+        return durationHours >= 3
+    }
+
+    data class SleepUiState(
+        val isLoading: Boolean = true,
+        val sleepSessions: List<SleepSession> = emptyList(),
+        val lastSession: SleepSession? = null, 
+        val error: String? = null,
+        val hasPermissions: Boolean = true, 
+        val sleepAdvice: SleepAdvice? = null, 
+        val aiAdviceLoading: Boolean = false,
+        val sessionAnalyses: Map<String, DailyAnalysis> = emptyMap(), 
+        val showManualEntryDialog: Boolean = false,
+        val selectedDate: LocalDate? = LocalDate.now(), 
+        val selectedStartTime: ZonedDateTime? = null, 
+        val selectedEndTime: ZonedDateTime? = null, 
+        val manualEntryNotes: String = "", 
+        val wakeCount: Int = 0, 
+        val editingSession: SleepSession? = null, 
+        val addSessionSuccess: Boolean = false, 
+        val updateSessionSuccess: Boolean = false, 
+        val showDuplicateEntryDialog: Boolean = false, 
+        val isAddingManualSession: Boolean = false, 
+        val isLoadingEditingSession: Boolean = false, 
+        val currentEditingSession: SleepSession? = null 
+    )
+}

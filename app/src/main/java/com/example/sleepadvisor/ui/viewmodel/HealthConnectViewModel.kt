@@ -3,8 +3,9 @@ package com.example.sleepadvisor.ui.viewmodel
 import android.app.Application
 import android.content.Intent
 import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
+import androidx.health.connect.client.records.SleepStageRecord
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.sleepadvisor.data.HealthConnectRepository
@@ -20,7 +21,6 @@ data class HealthConnectUiState(
     val hasPermissions: Boolean = false,
     val isRequestingPermissions: Boolean = false,
     val showPermissionRequest: Boolean = false,
-    val steps: List<StepsRecord> = emptyList(),
     val error: String? = null
 )
 
@@ -77,9 +77,6 @@ class HealthConnectViewModel(application: Application) : AndroidViewModel(applic
             hasPermissions = hasPermissions,
             showPermissionRequest = !hasPermissions
         ) }
-        if (hasPermissions) {
-            loadStepsData()
-        }
     }
 
     fun getPermissions() = repository.permissions
@@ -104,7 +101,6 @@ class HealthConnectViewModel(application: Application) : AndroidViewModel(applic
                 hasPermissions = true,
                 error = null
             ) }
-            loadStepsData()
         }
     }
 
@@ -117,38 +113,13 @@ class HealthConnectViewModel(application: Application) : AndroidViewModel(applic
         ) }
     }
 
-    private fun loadStepsData() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                repository.readStepsData()
-                    .collect { steps ->
-                        _uiState.update { 
-                            it.copy(
-                                isLoading = false,
-                                steps = steps,
-                                error = if (steps.isEmpty()) "Nenhum dado de passos disponível" else null
-                            )
-                        }
-                    }
-            } catch (e: Exception) {
-                _uiState.update { 
-                    it.copy(
-                        isLoading = false,
-                        error = "Erro ao carregar dados: ${e.message}"
-                    )
-                }
-            }
-        }
-    }
-
     fun retryOperation() {
         if (!_uiState.value.isAvailable) {
             checkAvailability()
         } else if (!_uiState.value.hasPermissions) {
             _uiState.update { it.copy(showPermissionRequest = true) }
         } else {
-            loadStepsData()
+            _uiState.update { it.copy(isLoading = false, error = null) } 
         }
     }
 } 

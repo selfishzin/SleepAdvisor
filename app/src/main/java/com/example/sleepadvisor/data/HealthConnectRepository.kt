@@ -3,10 +3,12 @@ package com.example.sleepadvisor.data
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
-import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.SleepSessionRecord
+import androidx.health.connect.client.records.SleepStageRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import kotlinx.coroutines.flow.Flow
@@ -16,12 +18,18 @@ import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 
 class HealthConnectRepository(private val context: Context) {
+    companion object {
+        private const val TAG = "HealthConnectRepo"
+        const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
+    }
+    
     private var healthConnectClient: HealthConnectClient? = null
 
     // Permissões necessárias
     val permissions: Set<String> = setOf(
-        HealthPermission.getReadPermission(StepsRecord::class),
-        HealthPermission.getWritePermission(StepsRecord::class),
+        HealthPermission.getReadPermission(SleepSessionRecord::class),
+        HealthPermission.getWritePermission(SleepSessionRecord::class),
+        HealthPermission.getReadPermission(SleepStageRecord::class),
         HealthPermission.getReadPermission(HeartRateRecord::class)
     )
 
@@ -51,42 +59,47 @@ class HealthConnectRepository(private val context: Context) {
 
     // Inicializa o cliente se disponível
     fun initializeClient(): HealthConnectClient? {
-        if (checkAvailability() == HealthConnectClient.SDK_AVAILABLE) {
-            healthConnectClient = HealthConnectClient.getOrCreate(context)
-        }
-        return healthConnectClient
-    }
-
-    // Verifica se todas as permissões foram concedidas
-    suspend fun hasAllPermissions(): Boolean {
-        val client = healthConnectClient ?: return false
-        return client.permissionController.getGrantedPermissions().containsAll(permissions)
-    }
-
-    // Lê dados de passos das últimas 24 horas
-    suspend fun readStepsData(): Flow<List<StepsRecord>> = flow {
-        try {
-            val client = healthConnectClient ?: throw IllegalStateException("Health Connect client não inicializado")
+        return try {
+            val availability = checkAvailability()
+            Log.d(TAG, "Status de disponibilidade do Health Connect: $availability")
             
-            val stepsPermissions = setOf(
-                HealthPermission.getReadPermission(StepsRecord::class)
-            )
-            if (!client.permissionController.getGrantedPermissions().containsAll(stepsPermissions)) {
-                throw SecurityException("Permissões de leitura de passos não concedidas")
+            if (availability == HealthConnectClient.SDK_AVAILABLE) {
+                healthConnectClient = HealthConnectClient.getOrCreate(context)
+                Log.d(TAG, "Cliente do Health Connect inicializado com sucesso")
+                healthConnectClient
+            } else {
+                Log.w(TAG, "Health Connect não está disponível. Status: $availability")
+                null
             }
-
-            val endTime = Instant.now()
-            val startTime = endTime.minus(24, ChronoUnit.HOURS)
-
-            val response = client.readRecords(
-                ReadRecordsRequest(
-                    recordType = StepsRecord::class,
-                    timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
-                )
-            )
-            emit(response.records)
         } catch (e: Exception) {
-            throw e
+            Log.e(TAG, "Erro ao inicializar o cliente do Health Connect: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Verifica se todas as permissões necessárias foram concedidas.
+     * 
+     * @return `true` se todas as permissões necessárias foram concedidas, `false` caso contrário.
+     */
+    suspend fun hasAllPermissions(): Boolean {
+        return try {
+            val client = healthConnectClient ?: run {
+                Log.w(TAG, "Cliente do Health Connect não está disponível")
+                return false
+            }
+            
+            val grantedPermissions = client.permissionController.getGrantedPermissions()
+            val hasAll = grantedPermissions.containsAll(permissions)
+            
+            Log.d(TAG, "Permissões concedidas: $grantedPermissions")
+            Log.d(TAG, "Permissões necessárias: $permissions")
+            Log.d(TAG, "Todas as permissões concedidas? $hasAll")
+            
+            hasAll
+        } catch (e: Exception) {
+            Log.e(TAG, "Erro ao verificar permissões: ${e.message}", e)
+            false
         }
     }
 
@@ -121,7 +134,5 @@ class HealthConnectRepository(private val context: Context) {
         }
     }
 
-    companion object {
-        const val HEALTH_CONNECT_PACKAGE = "com.google.android.apps.healthdata"
-    }
+
 } 

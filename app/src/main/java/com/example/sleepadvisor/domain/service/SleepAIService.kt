@@ -1,6 +1,7 @@
 package com.example.sleepadvisor.domain.service
 
 import com.example.sleepadvisor.domain.model.SleepSession
+import com.example.sleepadvisor.domain.model.SleepSource
 import com.example.sleepadvisor.domain.model.SleepStage
 import com.example.sleepadvisor.domain.model.SleepStageType
 import com.example.sleepadvisor.domain.usecase.CalculateCustomSleepStagesUseCase
@@ -246,20 +247,20 @@ class SleepAIService @Inject constructor(
      */
     private fun createSleepStagesDetail(session: SleepSession): SleepStagesDetail {
         var processedStages: List<SleepStage> = emptyList()
-        var sourceHint = "Simulated" // Default para simulação
+        var sourceHint: SleepSource = SleepSource.SIMULATION // Default para simulação
         var isActuallyEstimated = true
 
         // 1. Tentar com o algoritmo customizado
         val customStages = calculateCustomSleepStagesUseCase(session.startTime, session.endTime, session.heartRateSamples)
         if (customStages.isNotEmpty()) {
             processedStages = customStages
-            sourceHint = "CustomAlgorithm"
+            sourceHint = SleepSource.MANUAL
             isActuallyEstimated = false // Calculado, não estimado por % fixas
         } else {
             // 2. Se o customizado falhar, tentar usar os estágios do Health Connect (se houver)
             if (session.stages.isNotEmpty()) {
-                processedStages = session.stages // Estes já têm a source de "HealthConnect"
-                sourceHint = processedStages.firstOrNull()?.source ?: "HealthConnect"
+                processedStages = session.stages // Estes já têm a source de SleepSource.HEALTH_CONNECT
+                sourceHint = processedStages.firstOrNull()?.source ?: SleepSource.HEALTH_CONNECT
                 isActuallyEstimated = false // Dados reais do HC
             }
             // 3. Se ambos falharem, recorrer à simulação (processedStages continua emptyList)
@@ -319,7 +320,7 @@ class SleepAIService @Inject constructor(
                 remPercentage = 20.0,
                 awakePercentage = 5.0,
                 isEstimated = true, // Definitivamente estimado aqui
-                sourceHint = "Simulated_Fallback"
+                sourceHint = SleepSource.SIMULATION // Changed from "Simulated_Fallback"
             )
         }
     }
@@ -366,7 +367,7 @@ class SleepAIService @Inject constructor(
         // Se os estágios customizados forem diferentes, podemos recontar os despertares aqui.
         // Vamos usar a contagem de despertares derivada dos 'processedStages' em createSleepStagesDetail.
         // Se sourceHint for CustomAlgorithm ou HealthConnect, os estágios são mais confiáveis para isso.
-        val wakeCountToUse = if (stagesDetail.sourceHint == "CustomAlgorithm" || stagesDetail.sourceHint == "HealthConnect") {
+        val wakeCountToUse = if (stagesDetail.sourceHint == SleepSource.MANUAL || stagesDetail.sourceHint == SleepSource.HEALTH_CONNECT) {
              // Tenta derivar despertares da duração 'awake'. Isso é uma heurística.
              // Uma contagem de 'AWAKE stages' seria mais precisa se o algoritmo customizado os gerar.
             val awakeDurationMinutes = stagesDetail.awakeDuration.toMinutes()
@@ -421,13 +422,13 @@ class SleepAIService @Inject constructor(
         )
         
         return when {
-            sleepStages.remPercentage > 25 && sleepStages.sourceHint != "Simulated_Fallback" -> 
+            sleepStages.remPercentage > 25 && sleepStages.sourceHint != SleepSource.SIMULATION -> 
                 "Você teve ${sleepStages.rem} de sono REM (${sleepStages.remPercentage.toInt()}%), acima da média. O sono REM é essencial para a consolidação da memória e criatividade."
-            sleepStages.deepPercentage > 25 && sleepStages.sourceHint != "Simulated_Fallback" -> 
+            sleepStages.deepPercentage > 25 && sleepStages.sourceHint != SleepSource.SIMULATION -> 
                 "Você teve ${sleepStages.deep} de sono profundo (${sleepStages.deepPercentage.toInt()}%), acima da média. O sono profundo é quando ocorre a maior parte da recuperação física."
-            sleepStages.deepPercentage < 15 && sleepStages.sourceHint != "Simulated_Fallback" -> 
+            sleepStages.deepPercentage < 15 && sleepStages.sourceHint != SleepSource.SIMULATION -> 
                 "Você teve apenas ${sleepStages.deep} de sono profundo (${sleepStages.deepPercentage.toInt()}%). O sono profundo é essencial para a recuperação física e imunidade."
-            sleepStages.remPercentage < 15 && sleepStages.sourceHint != "Simulated_Fallback" -> 
+            sleepStages.remPercentage < 15 && sleepStages.sourceHint != SleepSource.SIMULATION -> 
                 "Você teve apenas ${sleepStages.rem} de sono REM (${sleepStages.remPercentage.toInt()}%). O sono REM é importante para a saúde mental e processamento emocional."
             session.duration.toHours() > 9 -> 
                 "Você dormiu mais de 9 horas. Embora o sono seja importante, dormir demais regularmente pode estar associado a problemas de saúde."
@@ -457,7 +458,7 @@ class SleepAIService @Inject constructor(
     }
 
     /**
-     * Detecta a tendência de sono ao longo da semana
+     * Detecta a tendência de sono ao longo de um período
      */
     private fun detectSleepTrend(sessions: List<SleepSession>): SleepTrend? {
         if (sessions.size < 3) return null // Precisa de pelo menos 3 noites para uma tendência mínima
@@ -560,7 +561,7 @@ data class SleepStagesDetail(
     val remPercentage: Double,
     val awakePercentage: Double,
     val isEstimated: Boolean = false,
-    val sourceHint: String? = null
+    val sourceHint: SleepSource? = null
 ) {
     // Propriedade para calcular a duração de 'awake' a partir da string formatada.
     // Idealmente, SleepStagesDetail armazenaria Duration diretamente para evitar parsing.
@@ -606,3 +607,43 @@ data class SleepTrend(
     val trendDescription: String,
     val consistencyScore: Int // 0-100, quão consistente é o sono
 )
+
+/**
+ * Gera um fato científico personalizado baseado nos dados de sono
+ */
+private fun generateScientificFact(session: SleepSession, sleepStages: SleepStagesDetail): String {
+    val facts = listOf(
+        "O sono REM está ligado à regulação emocional e ao processamento de memórias.",
+        "Durante o sono profundo, o cérebro consolida memórias e o corpo libera hormônio do crescimento.",
+        "Um ciclo completo de sono dura cerca de 90 minutos, passando por estágios leve, profundo e REM.",
+        "A melatonina, hormônio que regula o sono, é suprimida pela luz azul de telas.",
+        "Adultos precisam em média de 7-9 horas de sono por noite para funções cognitivas ótimas.",
+        "O sono profundo é essencial para a recuperação física do corpo.",
+        "A temperatura ideal do quarto para dormir é entre 18-20°C.",
+        "Durante o sono REM, o corpo fica temporariamente paralisado para evitar que atuemos nossos sonhos."
+    )
+    
+    // Correção do uso de SleepSource como String
+    if (session.source == SleepSource.MANUAL) {
+        return "Scientific fact related to manually tracked sleep: Consistent tracking helps identify patterns!"
+    } else if (session.source == SleepSource.HEALTH_CONNECT) {
+        return "Scientific fact related to Health Connect data: Detailed sleep stages help understand sleep quality."
+    }
+    
+    // Restante da lógica para gerar o fato científico
+    return when {
+        sleepStages.remPercentage > 25 && sleepStages.sourceHint != SleepSource.SIMULATION -> 
+            "Você teve ${sleepStages.rem} de sono REM (${sleepStages.remPercentage.toInt()}%), acima da média. O sono REM é essencial para a consolidação da memória e criatividade."
+        sleepStages.deepPercentage > 25 && sleepStages.sourceHint != SleepSource.SIMULATION -> 
+            "Você teve ${sleepStages.deep} de sono profundo (${sleepStages.deepPercentage.toInt()}%), acima da média. O sono profundo é quando ocorre a maior parte da recuperação física."
+        sleepStages.deepPercentage < 15 && sleepStages.sourceHint != SleepSource.SIMULATION -> 
+            "Você teve apenas ${sleepStages.deep} de sono profundo (${sleepStages.deepPercentage.toInt()}%). O sono profundo é essencial para a recuperação física e imunidade."
+        sleepStages.remPercentage < 15 && sleepStages.sourceHint != SleepSource.SIMULATION -> 
+            "Você teve apenas ${sleepStages.rem} de sono REM (${sleepStages.remPercentage.toInt()}%). O sono REM é importante para a saúde mental e processamento emocional."
+        session.duration.toHours() > 9 -> 
+            "Você dormiu mais de 9 horas. Embora o sono seja importante, dormir demais regularmente pode estar associado a problemas de saúde."
+        session.duration.toHours() < 6 -> 
+            "Você dormiu menos de 6 horas. A privação crônica de sono pode afetar negativamente a memória, humor e imunidade."
+        else -> facts.random()
+    }
+}

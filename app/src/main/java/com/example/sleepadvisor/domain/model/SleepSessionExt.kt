@@ -9,25 +9,28 @@ import java.time.format.DateTimeFormatter
 
 /**
  * Calcula a porcentagem de tempo gasto em um determinado tipo de estágio de sono.
- * Se não houver estágios ou a duração total for zero, retorna valores padrão estimados
- * seguindo a distribuição típica de 55% sono leve, 25% sono profundo e 20% REM.
+ * Se a duração total da SESSÃO DE SONO for zero ou negativa, OU se não houver estágios,
+ * retorna valores estimados padrão seguindo a distribuição típica de 55% sono leve, 25% sono profundo e 20% REM.
  *
  * @param type Tipo do estágio de sono para calcular a porcentagem
  * @return Porcentagem de tempo gasto no estágio especificado (0-100)
  */
 fun SleepSession.getStagePercentage(type: SleepStageType): Double {
-    // Se não há estágios, retorna valores estimados padrão
-    if (stages.isEmpty()) {
+    // Se a duração total da SESSÃO DE SONO for zero ou negativa, OU se não houver estágios,
+    // retorna valores estimados padrão.
+    if (this.duration.isZero || this.duration.isNegative || stages.isEmpty()) {
         return when (type) {
             SleepStageType.LIGHT -> 55.0
             SleepStageType.DEEP -> 25.0
             SleepStageType.REM -> 20.0
-            else -> 0.0
+            else -> 0.0 // AWAKE, UNKNOWN, etc. will be 0
         }
     }
 
     // Calcula a duração total de todos os estágios
     val totalStageDuration = stages.sumOf { it.duration.seconds }
+    // Se a soma das durações dos ESTÁGIOS for zero (mesmo que a sessão tenha duração > 0),
+    // também retorna 0 para evitar divisão por zero e indicar que os dados dos estágios são problemáticos.
     if (totalStageDuration <= 0) return 0.0
 
     // Calcula a duração total para o tipo específico
@@ -45,7 +48,7 @@ fun SleepSession.getStagePercentage(type: SleepStageType): Double {
  * @return true se os estágios são estimados, false se são dados reais
  */
 fun SleepSession.hasEstimatedStages(): Boolean {
-    return source == "Simulation" || stages.any { it.source == "Simulation" }
+    return source == SleepSource.SIMULATION || stages.any { it.source == SleepSource.SIMULATION }
 }
 
 /**
@@ -58,6 +61,24 @@ fun SleepSession.hasEstimatedStages(): Boolean {
 fun SleepSession.hasValidStages(): Boolean {
     return stages.isNotEmpty() || 
            (deepSleepPercentage > 0 && remSleepPercentage > 0 && lightSleepPercentage > 0)
+}
+
+/**
+ * Atualiza os percentuais de estágios de sono no objeto SleepSession
+ * com base nos estágios registrados.
+ *
+ * @return SleepSession atualizado com os percentuais calculados
+ */
+fun SleepSession.calculateAndUpdateStagePercentages(): SleepSession {
+    val lightPercentage = getStagePercentage(SleepStageType.LIGHT)
+    val deepPercentage = getStagePercentage(SleepStageType.DEEP)
+    val remPercentage = getStagePercentage(SleepStageType.REM)
+    
+    return this.copy(
+        lightSleepPercentage = lightPercentage,
+        deepSleepPercentage = deepPercentage,
+        remSleepPercentage = remPercentage
+    )
 }
 
 /**

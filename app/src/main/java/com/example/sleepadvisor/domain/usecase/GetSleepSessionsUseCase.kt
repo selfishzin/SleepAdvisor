@@ -10,6 +10,7 @@ import androidx.health.connect.client.records.SleepStageRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import com.example.sleepadvisor.domain.model.SleepSession
+import com.example.sleepadvisor.domain.model.SleepSource
 import com.example.sleepadvisor.domain.model.SleepStage
 import com.example.sleepadvisor.domain.model.SleepStageType
 import com.example.sleepadvisor.domain.repository.SleepRepository
@@ -178,7 +179,7 @@ class GetSleepSessionsUseCase @Inject constructor(
             stages = stages,
             notes = sessions.mapNotNull { it.notes }.joinToString("\n").takeIf { it.isNotEmpty() },
             wakeDuringNightCount = totalWakeCount,
-            source = "Consolidated" // Indicando que esta é uma sessão consolidada
+            source = SleepSource.MANUAL // Indicando que esta é uma sessão consolidada
         )
     }
     
@@ -215,21 +216,21 @@ class GetSleepSessionsUseCase @Inject constructor(
             type = SleepStageType.LIGHT,
             startTime = startTime,
             endTime = Instant.ofEpochMilli(startTime.toEpochMilli() + Duration.ofMinutes(lightSleepMinutes).toMillis()),
-            source = "Simulation"
+            source = SleepSource.SIMULATION
         )
         
         val deepStage = SleepStage(
             type = SleepStageType.DEEP,
             startTime = lightStage.endTime,
             endTime = Instant.ofEpochMilli(lightStage.endTime.toEpochMilli() + Duration.ofMinutes(deepSleepMinutes.toLong()).toMillis()),
-            source = "Simulation"
+            source = SleepSource.SIMULATION
         )
         
         val remStage = SleepStage(
             type = SleepStageType.REM,
             startTime = deepStage.endTime,
             endTime = Instant.ofEpochMilli(deepStage.endTime.toEpochMilli() + Duration.ofMinutes(remSleepMinutes.toLong()).toMillis()),
-            source = "Simulation"
+            source = SleepSource.SIMULATION
         )
         
         return listOf(lightStage, deepStage, remStage)

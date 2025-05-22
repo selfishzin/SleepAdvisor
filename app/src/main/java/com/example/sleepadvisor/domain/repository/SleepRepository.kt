@@ -13,7 +13,7 @@ interface SleepRepository {
     /**
      * Obtém sessões de sono dentro de um intervalo de tempo
      */
-    suspend fun getSleepSessions(
+    fun getSleepSessions(
         startTime: ZonedDateTime,
         endTime: ZonedDateTime
     ): Flow<List<SleepSession>>

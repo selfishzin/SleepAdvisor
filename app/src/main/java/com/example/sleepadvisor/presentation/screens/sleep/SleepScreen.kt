@@ -1,92 +1,82 @@
 package com.example.sleepadvisor.presentation.screens.sleep
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import com.example.sleepadvisor.domain.model.getStagePercentage
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.material.icons.outlined.Bedtime
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.health.connect.client.HealthConnectClient
-import androidx.health.connect.client.permission.HealthPermission
-import androidx.health.connect.client.records.SleepSessionRecord
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.result.ActivityResultLauncher
-import android.content.Intent
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.content.Intent // Mantido caso seja usado em outro lugar, senão pode ser removido
 import android.os.Build
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
-import androidx.health.connect.client.PermissionController
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import com.example.sleepadvisor.domain.model.SleepSession
-import com.example.sleepadvisor.domain.model.SleepStageType
-import com.example.sleepadvisor.domain.service.SleepAdvice
-import com.example.sleepadvisor.domain.model.DailyAnalysis
-import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis
-import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis
-import com.patrykandpatrick.vico.compose.chart.Chart
-import com.patrykandpatrick.vico.compose.chart.line.lineChart
-import com.patrykandpatrick.vico.core.entry.entryModelOf
-import com.patrykandpatrick.vico.core.axis.AxisPosition
-import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter
-import com.patrykandpatrick.vico.core.axis.vertical.VerticalAxis
-import com.patrykandpatrick.vico.core.component.text.TextComponent
-import com.patrykandpatrick.vico.core.component.shape.LineComponent
-import java.time.format.DateTimeFormatter
-import kotlin.time.Duration.Companion.minutes
-import kotlinx.coroutines.launch
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import android.util.Log
-import com.example.sleepadvisor.presentation.screens.sleep.SleepAnalysisSummary
+import androidx.compose.ui.platform.LocalContext
+// import androidx.compose.ui.platform.LocalLifecycleOwner // Não utilizado diretamente aqui
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.health.connect.client.HealthConnectClient // Não utilizado diretamente aqui
+import androidx.health.connect.client.PermissionController // Não utilizado diretamente aqui
+import androidx.health.connect.client.permission.HealthPermission // Não utilizado diretamente aqui
+import androidx.health.connect.client.records.SleepSessionRecord // Não utilizado diretamente aqui
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.sleepadvisor.domain.model.DailyAnalysis
+import com.example.sleepadvisor.domain.model.SleepSession // Assumindo que SleepSession.source é atualizado para SleepSource
+import com.example.sleepadvisor.domain.model.SleepStageType
+import com.example.sleepadvisor.domain.model.getStagePercentage
+// import com.example.sleepadvisor.domain.service.SleepAdvice // Não utilizado diretamente aqui
+// import com.example.sleepadvisor.presentation.screens.sleep.SleepAnalysisSummary // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.compose.axis.horizontal.rememberBottomAxis // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.compose.axis.vertical.rememberStartAxis // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.compose.chart.Chart // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.compose.chart.line.lineChart // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.core.axis.AxisPosition // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.core.axis.formatter.AxisValueFormatter // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.core.component.shape.LineComponent // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.core.component.text.TextComponent // Não utilizado diretamente aqui
+// import com.patrykandpatrick.vico.core.entry.entryModelOf // Não utilizado diretamente aqui
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.OffsetDateTime // Assumindo que uiState.selectedStartTime/EndTime são deste tipo ou similar com isBefore/isEqual
+import java.time.format.DateTimeFormatter
+import java.util.Calendar
+// import kotlin.time.Duration.Companion.minutes // Não utilizado diretamente aqui
+import kotlinx.coroutines.launch // Não utilizado diretamente aqui, mas rememberCoroutineScope sim
+import com.example.sleepadvisor.domain.model.SleepSource
+// data class SleepStage(..., val source: SleepSource, ...)
 
 @RequiresApi(Build.VERSION_CODES.S)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SleepScreen(
     viewModel: SleepViewModel,
-    onNavigateToManualEntry: (String?) -> Unit, 
+    onNavigateToManualEntry: (String?) -> Unit,
     onNavigateToAnalysis: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -95,7 +85,8 @@ fun SleepScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (!uiState.hasPermissions && uiState.error == null) { 
+        // Só pede permissões se não as tiver e não houver um erro que impeça (ex: Health Connect não disponível)
+        if (!uiState.hasPermissions && uiState.error == null) {
             permissionLauncher.launch(viewModel.permissions.toTypedArray())
         }
     }
@@ -105,14 +96,14 @@ fun SleepScreen(
             TopAppBar(
                 title = { Text("Sleep Advisor") },
                 actions = {
-                    IconButton(onClick = { viewModel.onShowManualEntryDialog(true) }) { 
+                    IconButton(onClick = { viewModel.onShowManualEntryDialog(true) }) {
                         Icon(
                             imageVector = Icons.Default.AddCircleOutline,
                             contentDescription = "Adicionar registro manual"
                         )
                     }
                     IconButton(onClick = { viewModel.refreshData() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Atualizar")
+                        Icon(Icons.Default.Refresh, contentDescription = "Atualizar dados")
                     }
                 }
             )
@@ -120,12 +111,12 @@ fun SleepScreen(
         floatingActionButton = {
             if (uiState.sleepSessions.isNotEmpty()) {
                 FloatingActionButton(onClick = onNavigateToAnalysis) {
-                    Icon(Icons.Default.Analytics, contentDescription = "Ver Análise Detalhada")
+                    Icon(Icons.Default.Analytics, contentDescription = "Ver Análise Detalhada de Tendências")
                 }
             }
         }
     ) { padding ->
-        Column(modifier = Modifier
+        Column(modifier = modifier
             .padding(padding)
             .fillMaxSize()) {
 
@@ -141,12 +132,17 @@ fun SleepScreen(
             } else {
                 SleepContent(
                     uiState = uiState,
-                    onDeleteSessionRequest = { session -> viewModel.deleteSleepSession(session) }, 
-                    onEditSession = { session -> viewModel.onEditSession(session) }, 
+                    onDeleteSessionRequest = { session -> viewModel.deleteSleepSession(session) },
+                    onEditSession = { session ->
+                        viewModel.onEditSession(session) // ViewModel prepara o estado para edição
+                        // onNavigateToManualEntry(session.id) // Navegação pode ser feita pelo ViewModel ou removida se o diálogo for modal
+                    },
                     onNavigateToAnalysis = onNavigateToAnalysis,
                     onSleepSessionClick = { session ->
                         Log.d("SleepScreen", "Session clicked: ${session.id}")
-                    }
+                        // Ação de clique pode ser expandir ou navegar para detalhes, se houver outra tela.
+                    },
+                    onShowManualEntryDialog = { viewModel.onShowManualEntryDialog(true) }
                 )
             }
 
@@ -154,7 +150,7 @@ fun SleepScreen(
                 ManualSleepEntryDialog(
                     uiState = uiState,
                     onDismiss = { viewModel.onDismissManualEntryDialog() },
-                    onSave = { viewModel.saveManualSleepSession() },
+                    onSave = { viewModel.saveManualSleepSession() }, // ViewModel lida com criação ou atualização
                     onDateSelected = { date -> viewModel.onDateSelected(date) },
                     onTimeSet = { hour, minute, isStart -> viewModel.onTimeSet(hour, minute, isStart) },
                     onNotesChanged = { notes -> viewModel.onNotesChanged(notes) }
@@ -214,11 +210,12 @@ fun ErrorDialog(errorMessage: String, onDismiss: () -> Unit) {
 
 @Composable
 fun SleepContent(
-    uiState: SleepUiState,
+    uiState: SleepViewModel.SleepUiState,
     onDeleteSessionRequest: (SleepSession) -> Unit,
     onEditSession: (SleepSession) -> Unit,
     onNavigateToAnalysis: () -> Unit,
-    onSleepSessionClick: (SleepSession) -> Unit, 
+    onSleepSessionClick: (SleepSession) -> Unit,
+    onShowManualEntryDialog: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -226,7 +223,7 @@ fun SleepContent(
             .fillMaxSize()
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(bottom = 72.dp) 
+        contentPadding = PaddingValues(bottom = 72.dp) // Espaço para o FAB
     ) {
         item {
             Spacer(modifier = Modifier.height(8.dp))
@@ -235,7 +232,7 @@ fun SleepContent(
                 Spacer(modifier = Modifier.height(8.dp))
                 LastSleepCard(session = uiState.lastSession, uiState = uiState)
             } else if (uiState.sleepSessions.isEmpty() && !uiState.isLoading) {
-                EmptySessionsMessage(onAddManualClick = { /* viewModel.onShowManualEntryDialog(true) - Ação já está no TopAppBar */ })
+                EmptySessionsMessage(onAddManualClick = onShowManualEntryDialog)
             }
         }
 
@@ -247,7 +244,7 @@ fun SleepContent(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text("Histórico de Sono", style = MaterialTheme.typography.titleLarge)
-                 OutlinedButton(
+                OutlinedButton(
                     onClick = onNavigateToAnalysis,
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -257,15 +254,14 @@ fun SleepContent(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            items(uiState.sleepSessions, key = { it.id }) {
-                session ->
+            items(uiState.sleepSessions, key = { it.id }) { session ->
                 val analysis = uiState.sessionAnalyses[session.id]
                 SleepSessionCard(
                     session = session,
                     onEdit = { onEditSession(session) },
-                    onDelete = { onDeleteSessionRequest(session) }, 
+                    onDelete = { onDeleteSessionRequest(session) },
                     dailyAnalysis = analysis,
-                    onClick = { onSleepSessionClick(session) } 
+                    onClick = { onSleepSessionClick(session) }
                 )
             }
         }
@@ -308,7 +304,26 @@ fun EmptySessionsMessage(onAddManualClick: () -> Unit, modifier: Modifier = Modi
 }
 
 @Composable
-fun LastSleepCard(session: SleepSession?, uiState: SleepUiState, modifier: Modifier = Modifier) {
+fun SourceIcon(source: SleepSource, modifier: Modifier = Modifier) {
+    val icon = when (source) {
+        SleepSource.MANUAL -> Icons.Default.EditNote
+        SleepSource.HEALTH_CONNECT -> Icons.Default.Sensors
+        SleepSource.SIMULATION -> Icons.Default.SmartToy
+        SleepSource.UNKNOWN -> Icons.Default.HelpOutline
+        SleepSource.GOOGLE_FIT -> Icons.Default.FitnessCenter
+    }
+    val tint = when (source) {
+        SleepSource.MANUAL -> MaterialTheme.colorScheme.secondary
+        SleepSource.HEALTH_CONNECT -> MaterialTheme.colorScheme.primary
+        SleepSource.SIMULATION -> MaterialTheme.colorScheme.tertiary
+        SleepSource.UNKNOWN -> MaterialTheme.colorScheme.outline
+        SleepSource.GOOGLE_FIT -> MaterialTheme.colorScheme.primary
+    }
+    Icon(imageVector = icon, contentDescription = "Fonte: ${source.displayName}", tint = tint, modifier = modifier)
+}
+
+@Composable
+fun LastSleepCard(session: SleepSession?, uiState: SleepViewModel.SleepUiState, modifier: Modifier = Modifier) {
     if (session == null) {
         OutlinedCard(modifier = modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -318,7 +333,8 @@ fun LastSleepCard(session: SleepSession?, uiState: SleepUiState, modifier: Modif
         return
     }
 
-    // Obter a análise pré-calculada do ViewModel em vez de gerar novamente
+    val sourceEnum = session.source
+
     val analysis = uiState.sessionAnalyses[session.id] ?: DailyAnalysis(
         date = session.startTimeZoned.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")),
         analysis = "Sem análise disponível para esta sessão.",
@@ -332,29 +348,26 @@ fun LastSleepCard(session: SleepSession?, uiState: SleepUiState, modifier: Modif
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "Em ${session.startTime.atZone(java.time.ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("dd/MM"))}",
-                    style = MaterialTheme.typography.titleMedium
-                )
-                Spacer(modifier = Modifier.weight(1.0f))
-                if (session.source == "Manual") {
-                    Icon(Icons.Default.EditNote, contentDescription = "Entrada Manual", tint = MaterialTheme.colorScheme.secondary)
-                } else if (session.source == "HealthConnect") {
-                    Icon(Icons.Default.Sensors, contentDescription = "Health Connect", tint = MaterialTheme.colorScheme.primary)
-                } else if (session.source == "Simulation") {
-                     Icon(Icons.Default.SmartToy, contentDescription = "Simulado", tint = MaterialTheme.colorScheme.tertiary)
-                } else {
-                    Icon(Icons.Default.HelpOutline, contentDescription = "Fonte desconhecida", tint = MaterialTheme.colorScheme.outline)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = session.startTimeZoned.format(DateTimeFormatter.ofPattern("dd/MM")),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = String.format(
+                            "%s - %s (%.1f h)",
+                            session.startTimeZoned.format(DateTimeFormatter.ofPattern("HH:mm")),
+                            session.endTimeZoned.format(DateTimeFormatter.ofPattern("HH:mm")),
+                            session.duration.toHours().toFloat()
+                        ),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                 }
+                SourceIcon(source = sourceEnum)
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = String.format("Você dormiu por %dh %02dmin", session.duration.toHours(), session.duration.toMinutesPart()),
-                style = MaterialTheme.typography.headlineSmall
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "De ${session.startTime.atZone(java.time.ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"))} até ${session.endTime.atZone(java.time.ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"))}",
+                text = "De ${session.startTimeZoned.format(DateTimeFormatter.ofPattern("HH:mm"))} até ${session.endTimeZoned.format(DateTimeFormatter.ofPattern("HH:mm"))}",
                 style = MaterialTheme.typography.bodyMedium
             )
             Spacer(modifier = Modifier.height(12.dp))
@@ -375,7 +388,7 @@ fun LastSleepCard(session: SleepSession?, uiState: SleepUiState, modifier: Modif
                     lightSleepPercentage = session.getStagePercentage(SleepStageType.LIGHT),
                     deepSleepPercentage = session.getStagePercentage(SleepStageType.DEEP),
                     remSleepPercentage = session.getStagePercentage(SleepStageType.REM),
-                    isEstimated = session.source == "Simulation" || session.stages.any { it.source == "Simulation" }
+                    isEstimated = sourceEnum == SleepSource.SIMULATION || session.stages.any { it.source == SleepSource.SIMULATION }
                 )
             } else {
                 Text("Estágios do sono não disponíveis.", style = MaterialTheme.typography.bodySmall)
@@ -392,9 +405,9 @@ fun LastSleepCard(session: SleepSession?, uiState: SleepUiState, modifier: Modif
 
 fun QualitätsFarbe(score: Double): Color {
     return when {
-        score >= 80 -> Color(0xFF4CAF50) 
-        score >= 60 -> Color(0xFFFFC107) 
-        else -> Color(0xFFF44336) 
+        score >= 80 -> Color(0xFF4CAF50)
+        score >= 60 -> Color(0xFFFFC107)
+        else -> Color(0xFFF44336)
     }
 }
 
@@ -407,14 +420,14 @@ fun SleepStageInfo(
     isEstimated: Boolean = false
 ) {
     Column(modifier = modifier) {
-        if(isEstimated){
+        if (isEstimated) {
             Text("(Estágios Estimados)", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(modifier = Modifier.height(4.dp))
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-            SleepStagePercentage("Leve", lightSleepPercentage, Color(0xFF81D4FA), Modifier.weight(1f), isEstimated)
-            SleepStagePercentage("Profundo", deepSleepPercentage, Color(0xFF29B6F6), Modifier.weight(1f), isEstimated)
-            SleepStagePercentage("REM", remSleepPercentage, Color(0xFF0288D1), Modifier.weight(1f), isEstimated)
+            SleepStagePercentage("Leve", lightSleepPercentage, Color(0xFF81D4FA), Modifier.weight(1f))
+            SleepStagePercentage("Profundo", deepSleepPercentage, Color(0xFF29B6F6), Modifier.weight(1f))
+            SleepStagePercentage("REM", remSleepPercentage, Color(0xFF0288D1), Modifier.weight(1f))
         }
     }
 }
@@ -424,8 +437,7 @@ fun SleepStagePercentage(
     label: String,
     percentage: Double,
     color: Color,
-    modifier: Modifier = Modifier,
-    isEstimated: Boolean = false 
+    modifier: Modifier = Modifier
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -434,7 +446,7 @@ fun SleepStagePercentage(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(20.dp) 
+                .height(20.dp)
                 .background(color.copy(alpha = 0.3f), shape = RoundedCornerShape(4.dp))
         ) {
             Box(
@@ -460,43 +472,38 @@ fun SleepSessionCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     dailyAnalysis: DailyAnalysis? = null,
-    onClick: () -> Unit, 
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable(key = session.id) { mutableStateOf(false) }
+
     val formatter = DateTimeFormatter.ofPattern("HH:mm")
     val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
+    val sourceEnum = session.source
+
     OutlinedCard(
         modifier = modifier.fillMaxWidth(),
-        onClick = onClick 
+        onClick = { expanded = !expanded }
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = session.startTime.atZone(java.time.ZoneId.systemDefault()).format(dateFormatter),
+                        text = session.startTimeZoned.format(dateFormatter),
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
                         text = String.format(
                             "%s - %s (%.1f h)",
-                            session.startTime.atZone(java.time.ZoneId.systemDefault()).format(formatter),
-                            session.endTime.atZone(java.time.ZoneId.systemDefault()).format(formatter),
+                            session.startTimeZoned.format(formatter),
+                            session.endTimeZoned.format(formatter),
                             session.duration.toHours().toFloat()
                         ),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
-                if (session.source == "Manual") {
-                    Icon(Icons.Default.EditNote, contentDescription = "Entrada Manual", tint = MaterialTheme.colorScheme.secondary)
-                } else if (session.source == "HealthConnect") {
-                    Icon(Icons.Default.Sensors, contentDescription = "Health Connect", tint = MaterialTheme.colorScheme.primary)
-                } else if (session.source == "Simulation") {
-                     Icon(Icons.Default.SmartToy, contentDescription = "Simulado", tint = MaterialTheme.colorScheme.tertiary)
-                } else {
-                    Icon(Icons.Default.HelpOutline, contentDescription = "Fonte desconhecida", tint = MaterialTheme.colorScheme.outline)
-                }
+                SourceIcon(source = sourceEnum)
             }
 
             if (dailyAnalysis != null) {
@@ -516,7 +523,7 @@ fun SleepSessionCard(
                     lightSleepPercentage = session.getStagePercentage(SleepStageType.LIGHT),
                     deepSleepPercentage = session.getStagePercentage(SleepStageType.DEEP),
                     remSleepPercentage = session.getStagePercentage(SleepStageType.REM),
-                    isEstimated = session.source == "Simulation" || session.stages.any { stage -> stage.source == "Simulation" }
+                    isEstimated = sourceEnum == SleepSource.SIMULATION || session.stages.any { it.source == SleepSource.SIMULATION }
                 )
             }
 
@@ -526,19 +533,17 @@ fun SleepSessionCard(
                 exit = fadeOut() + shrinkVertically()
             ) {
                 Column {
-                    if (session.notes != null && session.notes.isNotBlank()) {
+                    if (session.source == SleepSource.HEALTH_CONNECT || session.source == SleepSource.GOOGLE_FIT) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Notas:", style = MaterialTheme.typography.labelMedium)
-                        Text(session.notes, style = MaterialTheme.typography.bodySmall)
+                        Text("Notas: ${session.notes ?: "Nenhuma nota."}", style = MaterialTheme.typography.bodySmall)
+                        Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    // Primeira recomendação
                     if (dailyAnalysis?.recommendations?.isNotEmpty() == true) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Recomendação Principal:", style = MaterialTheme.typography.labelMedium)
                         Text(dailyAnalysis.recommendations.first(), style = MaterialTheme.typography.bodySmall)
-                        
-                        // Segunda recomendação (se existir)
+
                         if (dailyAnalysis.recommendations.size > 1) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Text("Outra Dica:", style = MaterialTheme.typography.labelMedium)
@@ -549,22 +554,22 @@ fun SleepSessionCard(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                if (session.source == "Manual") {
+            Row(horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                if (sourceEnum == SleepSource.MANUAL) {
                     IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Edit, contentDescription = "Editar")
+                        Icon(Icons.Default.Edit, contentDescription = "Editar Sessão")
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "Excluir")
+                        Icon(Icons.Default.Delete, contentDescription = "Excluir Sessão")
                     }
                 }
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.weight(1f)) // Empurra o botão de detalhes para a direita
                 TextButton(onClick = { expanded = !expanded }) {
                     Text(if (expanded) "Menos Detalhes" else "Mais Detalhes")
                     Icon(
                         if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) "Recolher" else "Expandir"
+                        contentDescription = if (expanded) "Recolher detalhes" else "Expandir detalhes"
                     )
                 }
             }
@@ -575,14 +580,15 @@ fun SleepSessionCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ManualSleepEntryDialog(
-    uiState: SleepUiState,
+    uiState: SleepViewModel.SleepUiState,
     onDismiss: () -> Unit,
     onSave: () -> Unit,
-    onDateSelected: (java.time.LocalDate) -> Unit,
+    onDateSelected: (LocalDate) -> Unit,
     onTimeSet: (hour: Int, minute: Int, isStart: Boolean) -> Unit,
     onNotesChanged: (String) -> Unit
 ) {
     val context = LocalContext.current
+    var validationError by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -590,57 +596,69 @@ fun ManualSleepEntryDialog(
         text = {
             Column {
                 Button(onClick = {
-                    val currentCal = java.util.Calendar.getInstance()
+                    val currentCal = Calendar.getInstance()
+                    uiState.selectedStartTime?.let { // Usa selectedStartTime se já definido, senão data atual
+                        currentCal.timeInMillis = it.toInstant().toEpochMilli()
+                    }
+                    DatePickerDialog(
+                        context,
+                        { _, year, month, dayOfMonth ->
+                            onDateSelected(LocalDate.of(year, month + 1, dayOfMonth))
+                            validationError = null // Limpa erro ao mudar data
+                        },
+                        currentCal.get(Calendar.YEAR),
+                        currentCal.get(Calendar.MONTH),
+                        currentCal.get(Calendar.DAY_OF_MONTH)
+                    ).show()
+                }) {
+                    Text("Data: ${uiState.selectedDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "Selecionar Data"}")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(onClick = {
+                    val currentCal = Calendar.getInstance()
                     uiState.selectedStartTime?.let {
                         currentCal.timeInMillis = it.toInstant().toEpochMilli()
                     }
-                    android.app.DatePickerDialog(
+                    TimePickerDialog(
                         context,
-                        { _, year, month, dayOfMonth ->
-                            onDateSelected(java.time.LocalDate.of(year, month + 1, dayOfMonth))
+                        { _, hour, minute ->
+                            onTimeSet(hour, minute, true)
+                            validationError = null // Limpa erro
                         },
-                        currentCal.get(java.util.Calendar.YEAR),
-                        currentCal.get(java.util.Calendar.MONTH),
-                        currentCal.get(java.util.Calendar.DAY_OF_MONTH)
+                        currentCal.get(Calendar.HOUR_OF_DAY),
+                        currentCal.get(Calendar.MINUTE),
+                        true // is24HourView
                     ).show()
                 }) {
-                    Text("Data: ${uiState.selectedDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "Selecionar"}")
+                    Text("Início: ${uiState.selectedStartTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Selecionar Início"}")
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Button(onClick = {
-                    val currentCal = java.util.Calendar.getInstance()
-                     uiState.selectedStartTime?.let {
+                    val currentCal = Calendar.getInstance()
+                    uiState.selectedEndTime?.let {
                         currentCal.timeInMillis = it.toInstant().toEpochMilli()
                     }
-                    android.app.TimePickerDialog(
+                    TimePickerDialog(
                         context,
-                        { _, hour, minute -> onTimeSet(hour, minute, true) },
-                        currentCal.get(java.util.Calendar.HOUR_OF_DAY),
-                        currentCal.get(java.util.Calendar.MINUTE),
-                        true
+                        { _, hour, minute ->
+                            onTimeSet(hour, minute, false)
+                            validationError = null // Limpa erro
+                        },
+                        currentCal.get(Calendar.HOUR_OF_DAY),
+                        currentCal.get(Calendar.MINUTE),
+                        true // is24HourView
                     ).show()
                 }) {
-                    Text("Início: ${uiState.selectedStartTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Selecionar"}")
+                    Text("Fim: ${uiState.selectedEndTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Selecionar Fim"}")
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(onClick = {
-                     val currentCal = java.util.Calendar.getInstance()
-                     uiState.selectedEndTime?.let {
-                        currentCal.timeInMillis = it.toInstant().toEpochMilli()
-                    }
-                    android.app.TimePickerDialog(
-                        context,
-                        { _, hour, minute -> onTimeSet(hour, minute, false) },
-                        currentCal.get(java.util.Calendar.HOUR_OF_DAY),
-                        currentCal.get(java.util.Calendar.MINUTE),
-                        true
-                    ).show()
-                }) {
-                    Text("Fim: ${uiState.selectedEndTime?.format(DateTimeFormatter.ofPattern("HH:mm")) ?: "Selecionar"}")
+                validationError?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -653,7 +671,36 @@ fun ManualSleepEntryDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onSave) {
+            Button(
+                onClick = {
+                    if (uiState.selectedDate == null) {
+                        validationError = "Por favor, selecione uma data."
+                        return@Button
+                    }
+                    if (uiState.selectedStartTime == null) {
+                        validationError = "Por favor, selecione a hora de início."
+                        return@Button
+                    }
+                    if (uiState.selectedEndTime == null) {
+                        validationError = "Por favor, selecione a hora de fim."
+                        return@Button
+                    }
+
+                    // Validação de tempo (assumindo que selectedStartTime e selectedEndTime são OffsetDateTime ou similar)
+                    // selectedStartTime e selectedEndTime já incluem a data através do viewModel
+                    if (uiState.selectedEndTime.isBefore(uiState.selectedStartTime)) {
+                        validationError = "A hora de fim não pode ser anterior à hora de início."
+                        return@Button
+                    }
+                    if (uiState.selectedEndTime.isEqual(uiState.selectedStartTime)) {
+                        validationError = "A hora de início e fim não podem ser iguais."
+                        return@Button
+                    }
+                    validationError = null
+                    onSave()
+                },
+                enabled = uiState.selectedDate != null && uiState.selectedStartTime != null && uiState.selectedEndTime != null
+            ) {
                 Text("Salvar")
             }
         },
@@ -664,3 +711,25 @@ fun ManualSleepEntryDialog(
         }
     )
 }
+
+// Placeholder para AIAdviceSection se não existir
+@Composable
+fun AIAdviceSection(advice: String?, isLoading: Boolean, modifier: Modifier = Modifier) {
+    if (isLoading) {
+        Box(modifier = modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else if (!advice.isNullOrBlank()) {
+        Card(modifier = modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Conselho da IA", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(advice, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+
+// Assume que SleepViewModel e os modelos de dados (SleepSession, DailyAnalysis, SleepUiState)
+// foram atualizados para usar SleepSource onde aplicável (especialmente SleepSession.source
+// e SleepStage.source se este último também tiver uma fonte individual).

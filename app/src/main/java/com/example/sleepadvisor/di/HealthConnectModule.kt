@@ -29,10 +29,10 @@ object HealthConnectModule {
     @Singleton
     fun provideSleepRepository(
         healthConnectClient: HealthConnectClient,
-        healthConnectRepository: HealthConnectRepository,
-        manualSleepSessionDao: ManualSleepSessionDao
+        manualSleepSessionDao: ManualSleepSessionDao,
+        healthConnectRepository: HealthConnectRepository
     ): SleepRepository {
-        return SleepRepositoryImpl(healthConnectClient, healthConnectRepository, manualSleepSessionDao)
+        return SleepRepositoryImpl(healthConnectClient, manualSleepSessionDao, healthConnectRepository)
     }
     
     @Provides

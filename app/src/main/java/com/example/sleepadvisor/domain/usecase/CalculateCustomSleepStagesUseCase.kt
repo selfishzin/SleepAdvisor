@@ -1,6 +1,7 @@
 package com.example.sleepadvisor.domain.usecase
 
 import androidx.health.connect.client.records.HeartRateRecord
+import com.example.sleepadvisor.domain.model.SleepSource
 import com.example.sleepadvisor.domain.model.SleepStage
 import com.example.sleepadvisor.domain.model.SleepStageType
 import java.time.Duration
@@ -31,7 +32,7 @@ class CalculateCustomSleepStagesUseCase @Inject constructor() {
                     startTime = startTime,
                     endTime = endTime,
                     type = SleepStageType.UNKNOWN,
-                    source = "CustomAlgorithm_NoHRData"
+                    source = SleepSource.MANUAL
                 )
             )
         }
@@ -47,9 +48,9 @@ class CalculateCustomSleepStagesUseCase @Inject constructor() {
         val stage1End = startTime.plus(segmentDuration)
         val stage2End = stage1End.plus(segmentDuration)
 
-        estimatedStages.add(SleepStage(startTime, stage1End, SleepStageType.LIGHT, "CustomAlgorithm_Placeholder"))
-        estimatedStages.add(SleepStage(stage1End, stage2End, SleepStageType.DEEP, "CustomAlgorithm_Placeholder"))
-        estimatedStages.add(SleepStage(stage2End, endTime, SleepStageType.REM, "CustomAlgorithm_Placeholder")) // Garante que o último estágio vá até o fim
+        estimatedStages.add(SleepStage(startTime, stage1End, SleepStageType.LIGHT, SleepSource.MANUAL))
+        estimatedStages.add(SleepStage(stage1End, stage2End, SleepStageType.DEEP, SleepSource.MANUAL))
+        estimatedStages.add(SleepStage(stage2End, endTime, SleepStageType.REM, SleepSource.MANUAL)) // Garante que o último estágio vá até o fim
         
         // --- FIM DO ALGORITMO CUSTOMIZADO (PLACEHOLDER) ---
 

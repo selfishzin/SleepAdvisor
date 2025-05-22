@@ -6,6 +6,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
+// Import the SleepSource enum
+import com.example.sleepadvisor.domain.model.SleepSource
+
 /**
  * Modelo de domínio que representa uma sessão de sono
  * Pode ser originada do Health Connect, de uma entrada manual, ou ter estágios estimados.
@@ -24,7 +27,7 @@ data class SleepSession(
     val lightSleepPercentage: Double = 0.0, 
     val wakeDuringNightCount: Int = 0,
     val heartRateSamples: List<HeartRateRecord.Sample>? = null,
-    val source: String 
+    val source: SleepSource 
 ) {
 
     val startTimeZoned: ZonedDateTime
@@ -40,11 +43,14 @@ data class SleepSession(
         endTime: Instant,
         notes: String? = null,
         title: String? = null,
-        source: String,
+        source: SleepSource,
         stages: List<SleepStage> = emptyList(),
         wakeDuringNightCount: Int = 0,
-        heartRateSamples: List<HeartRateRecord.Sample>? = null
-        // efficiency e porcentagens são tipicamente calculados, não passados no construtor básico
+        heartRateSamples: List<HeartRateRecord.Sample>? = null,
+        efficiency: Double = 0.0,
+        deepSleepPercentage: Double = 0.0,
+        remSleepPercentage: Double = 0.0,
+        lightSleepPercentage: Double = 0.0
     ) : this(
         id = id,
         startTime = startTime,
@@ -53,10 +59,10 @@ data class SleepSession(
         title = title,
         notes = notes,
         stages = stages,
-        efficiency = 0.0, 
-        deepSleepPercentage = 0.0, 
-        remSleepPercentage = 0.0,  
-        lightSleepPercentage = 0.0, 
+        efficiency = efficiency,
+        deepSleepPercentage = deepSleepPercentage,
+        remSleepPercentage = remSleepPercentage,
+        lightSleepPercentage = lightSleepPercentage,
         wakeDuringNightCount = wakeDuringNightCount,
         heartRateSamples = heartRateSamples,
         source = source

@@ -3,10 +3,12 @@ package com.example.sleepadvisor.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.sleepadvisor.domain.model.NapAnalysis
+import com.example.sleepadvisor.domain.model.SleepAdvice
 import com.example.sleepadvisor.domain.model.SleepQualityAnalysis
 import com.example.sleepadvisor.domain.model.SleepRecommendations
 import com.example.sleepadvisor.domain.model.SleepSession
 import com.example.sleepadvisor.domain.model.SleepTrendAnalysis
+import com.example.sleepadvisor.domain.repository.SleepAnalysisRepository
 import com.example.sleepadvisor.domain.usecase.AnalyzeSleepQualityUseCase
 import com.example.sleepadvisor.domain.usecase.AnalyzeSleepTrendsUseCase
 import com.example.sleepadvisor.domain.usecase.DetectNapsUseCase
@@ -34,7 +36,8 @@ class SleepAnalysisViewModel @Inject constructor(
     private val analyzeSleepTrendsUseCase: AnalyzeSleepTrendsUseCase,
     private val detectNapsUseCase: DetectNapsUseCase,
     private val generateSleepRecommendationsUseCase: GenerateSleepRecommendationsUseCase,
-    private val getSleepSessionDetailsUseCase: GetSleepSessionDetailsUseCase
+    private val getSleepSessionDetailsUseCase: GetSleepSessionDetailsUseCase,
+    private val sleepAnalysisRepository: SleepAnalysisRepository
 ) : ViewModel() {
 
     // Estado da UI observável pela camada de apresentação
@@ -43,6 +46,39 @@ class SleepAnalysisViewModel @Inject constructor(
 
     init {
         loadData()
+        getAIRecommendations()
+    }
+    
+    /**
+     * Obtém recomendações personalizadas de IA baseadas na última sessão de sono
+     */
+    private fun getAIRecommendations() {
+        viewModelScope.launch {
+            try {
+                // Aguardar o carregamento dos dados
+                if (_uiState.value.lastSession != null) {
+                    val lastSession = _uiState.value.lastSession!!
+                    
+                    // Obter recomendações de IA para a última sessão
+                    android.util.Log.d("SleepAnalysisVM", "Solicitando recomendações de IA para sessão: ${lastSession.id}")
+                    val aiAdvice = sleepAnalysisRepository.analyzeSleepSession(lastSession)
+                    android.util.Log.d("SleepAnalysisVM", "Recomendações de IA recebidas: ${aiAdvice.mainAdvice}")
+                    android.util.Log.d("SleepAnalysisVM", "Recomendações personalizadas: ${aiAdvice.customRecommendations.joinToString()}")
+                    
+                    // Atualizar o estado da UI com as recomendações de IA
+                    _uiState.update { currentState ->
+                        currentState.copy(
+                            aiAdvice = aiAdvice
+                        )
+                    }
+                    android.util.Log.d("SleepAnalysisVM", "Recomendações de IA obtidas com sucesso")
+                } else {
+                    android.util.Log.d("SleepAnalysisVM", "Não foi possível obter recomendações de IA: sessão não disponível")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SleepAnalysisVM", "Erro ao obter recomendações de IA: ${e.message}", e)
+            }
+        }
     }
 
     /**
@@ -271,6 +307,7 @@ data class SleepAnalysisUiState(
     val trendAnalysis: SleepTrendAnalysis? = null,
     val napAnalyses: List<NapAnalysis> = emptyList(),
     val recommendations: SleepRecommendations? = null,
+    val aiAdvice: SleepAdvice? = null,
     val selectedSession: SleepSession? = null,
     val selectedSessionAnalysis: SleepQualityAnalysis? = null,
     val sessionSpecificRecommendations: List<String> = emptyList(),

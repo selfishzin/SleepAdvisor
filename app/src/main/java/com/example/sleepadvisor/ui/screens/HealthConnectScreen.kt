@@ -107,34 +107,11 @@ fun HealthConnectScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp)
-                        ) {
-                            Text(
-                                text = "Dados de Sono e Atividade",
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            
-                            if (uiState.steps.isEmpty()) {
-                                Text(
-                                    "Nenhum dado disponível ainda",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.error
-                                )
-                            } else {
-                                uiState.steps.forEach { stepsRecord ->
-                                    Text(
-                                        "Passos: ${stepsRecord.count} (${stepsRecord.startTime})",
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        text = "Permissões concedidas. Navegue para outras seções do app.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(16.dp)
+                    )
                 }
             }
             else -> {

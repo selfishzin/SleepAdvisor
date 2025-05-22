@@ -15,6 +15,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.HeartRateRecord
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.SleepStageRecord
 import androidx.lifecycle.lifecycleScope
@@ -40,20 +41,34 @@ class MainActivity : ComponentActivity() {
     private val sleepViewModel: SleepViewModel by viewModels()
     private val sleepAnalysisViewModel: SleepAnalysisViewModel by viewModels()
 
+    // Permissões necessárias para acessar os dados de sono
     private val permissions = setOf(
         HealthPermission.getReadPermission(SleepSessionRecord::class),
-        HealthPermission.getReadPermission(SleepStageRecord::class)
+        HealthPermission.getWritePermission(SleepSessionRecord::class),
+        HealthPermission.getReadPermission(SleepStageRecord::class),
+        HealthPermission.getReadPermission(HeartRateRecord::class)
     )
 
     private val requestPermissions = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grantResults ->
-        if (grantResults.values.all { it }) {
-            Log.d(TAG, "All permissions granted")
-            sleepViewModel.onPermissionsGranted()
+        Log.d(TAG, "Resultado da solicitação de permissões: $grantResults")
+        
+        val allGranted = grantResults.entries.all { it.value }
+        
+        if (allGranted) {
+            Log.d(TAG, "Todas as permissões foram concedidas")
+            lifecycleScope.launch {
+                // Verifica novamente para garantir que as permissões foram realmente concedidas
+                checkPermissionsAndUpdateState()
+            }
         } else {
-            Log.d(TAG, "Some permissions denied")
+            Log.w(TAG, "Algumas permissões foram negadas")
             sleepViewModel.onPermissionsDenied()
+            
+            // Mostra quais permissões foram negadas
+            val deniedPermissions = grantResults.filter { !it.value }.keys.joinToString()
+            Log.w(TAG, "Permissões negadas: $deniedPermissions")
         }
     }
     
@@ -116,29 +131,80 @@ class MainActivity : ComponentActivity() {
         }
     }
     
+    /**
+     * Verifica as permissões atuais e solicita as permissões necessárias, se ainda não concedidas.
+     */
     private suspend fun checkAndRequestPermissions() {
         try {
-            val granted = healthConnectClient.permissionController.getGrantedPermissions()
+            Log.d(TAG, "Verificando permissões do Health Connect...")
             
-            if (granted.containsAll(permissions)) {
+            // Verifica se o Health Connect está disponível
+            val availabilityStatus = HealthConnectClient.getSdkStatus(this, PROVIDER_PACKAGE_NAME)
+            if (availabilityStatus != HealthConnectClient.SDK_AVAILABLE) {
+                Log.w(TAG, "Health Connect não está disponível. Status: $availabilityStatus")
+                sleepViewModel.onPermissionsDenied()
+                return
+            }
+            
+            // Obtém as permissões concedidas
+            val granted = try {
+                healthConnectClient.permissionController.getGrantedPermissions()
+            } catch (e: Exception) {
+                Log.e(TAG, "Erro ao obter permissões concedidas", e)
+                emptySet()
+            }
+            
+            Log.d(TAG, "Permissões concedidas: $granted")
+            Log.d(TAG, "Permissões necessárias: $permissions")
+            
+            // Verifica se todas as permissões necessárias foram concedidas
+            val hasAllPermissions = permissions.all { granted.contains(it) }
+            
+            if (hasAllPermissions) {
+                Log.d(TAG, "Todas as permissões necessárias foram concedidas")
                 sleepViewModel.onPermissionsGranted()
             } else {
-                requestPermissions.launch(permissions.map { it.toString() }.toTypedArray())
+                Log.w(TAG, "Solicitando permissões faltantes...")
+                // Filtra apenas as permissões que ainda não foram concedidas
+                val missingPermissions = permissions.filterNot { granted.contains(it) }
+                Log.d(TAG, "Permissões faltantes: $missingPermissions")
+                
+                // Solicita as permissões faltantes
+                requestPermissions.launch(missingPermissions.map { it.toString() }.toTypedArray())
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking permissions", e)
+            Log.e(TAG, "Erro ao verificar/solicitar permissões", e)
+            sleepViewModel.onPermissionsDenied()
+            // Tenta abrir as configurações do Health Connect como último recurso
             openHealthConnectSettings()
         }
     }
     
+    /**
+     * Abre as configurações do Health Connect para que o usuário possa gerenciar as permissões manualmente.
+     */
     private fun openHealthConnectSettings() {
         try {
+            Log.d(TAG, "Abrindo configurações do Health Connect...")
             val intent = Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS")
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
-            Log.d(TAG, "Opened Health Connect settings")
+            Log.d(TAG, "Configurações do Health Connect abertas com sucesso")
         } catch (e: Exception) {
-            Log.e(TAG, "Error opening Health Connect settings", e)
-            sleepViewModel.onPermissionsDenied()
+            Log.e(TAG, "Erro ao abrir as configurações do Health Connect", e)
+            
+            // Tenta abrir a página do Health Connect na Play Store como fallback
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    data = android.net.Uri.parse("market://details?id=com.google.android.apps.healthdata")
+                    setPackage("com.android.vending") // Abre diretamente na Play Store
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+            } catch (e2: Exception) {
+                Log.e(TAG, "Erro ao abrir a Play Store", e2)
+                sleepViewModel.onPermissionsDenied()
+            }
         }
     }
 }

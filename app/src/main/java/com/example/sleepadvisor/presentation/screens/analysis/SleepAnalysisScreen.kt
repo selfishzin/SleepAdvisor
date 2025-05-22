@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.sleepadvisor.domain.model.NapAnalysis
+import com.example.sleepadvisor.domain.model.SleepAdvice
 import com.example.sleepadvisor.domain.model.SleepQualityAnalysis
 import com.example.sleepadvisor.domain.model.SleepSession
 import com.example.sleepadvisor.domain.model.SleepTrendAnalysis
@@ -118,6 +119,13 @@ fun SleepAnalysisContent(
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // Seção de recomendações de IA
+                uiState.aiAdvice?.let { aiAdvice ->
+                    item {
+                        AIRecommendationsCard(sleepAdvice = aiAdvice)
+                    }
+                }
+                
                 // Seção de recomendações prioritárias
                 uiState.recommendations?.let { recommendations ->
                     item {
