@@ -1,5 +1,6 @@
 package com.example.sleepadvisor.domain.model
 
+import com.example.sleepadvisor.domain.model.SleepMetrics
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 
@@ -20,26 +21,15 @@ fun SleepSession.getStagePercentage(type: SleepStageType): Double {
     // retorna valores estimados padrão.
     if (this.duration.isZero || this.duration.isNegative || stages.isEmpty()) {
         return when (type) {
-            SleepStageType.LIGHT -> 55.0
-            SleepStageType.DEEP -> 25.0
-            SleepStageType.REM -> 20.0
+            SleepStageType.LIGHT -> SleepMetrics.DEFAULT_LIGHT_SLEEP_PERCENTAGE
+            SleepStageType.DEEP -> SleepMetrics.DEFAULT_DEEP_SLEEP_PERCENTAGE
+            SleepStageType.REM -> SleepMetrics.DEFAULT_REM_SLEEP_PERCENTAGE
             else -> 0.0 // AWAKE, UNKNOWN, etc. will be 0
         }
     }
 
-    // Calcula a duração total de todos os estágios
-    val totalStageDuration = stages.sumOf { it.duration.seconds }
-    // Se a soma das durações dos ESTÁGIOS for zero (mesmo que a sessão tenha duração > 0),
-    // também retorna 0 para evitar divisão por zero e indicar que os dados dos estágios são problemáticos.
-    if (totalStageDuration <= 0) return 0.0
-
-    // Calcula a duração total para o tipo específico
-    val typeDuration = stages
-        .filter { it.type == type }
-        .sumOf { it.duration.seconds }
-
-    // Retorna a porcentagem (0-100)
-    return (typeDuration.toDouble() / totalStageDuration.toDouble()) * 100.0
+    // Usa o SleepMetrics para calcular a porcentagem do estágio
+    return SleepMetrics.calculateStagePercentage(stages, type)
 }
 
 /**
@@ -77,14 +67,21 @@ fun SleepSession.hasValidStages(): Boolean {
  * @return SleepSession atualizado com os percentuais calculados
  */
 fun SleepSession.calculateAndUpdateStagePercentages(): SleepSession {
-    val lightPercentage = getStagePercentage(SleepStageType.LIGHT)
-    val deepPercentage = getStagePercentage(SleepStageType.DEEP)
-    val remPercentage = getStagePercentage(SleepStageType.REM)
+    if (stages.isEmpty()) {
+        return this.copy(
+            lightSleepPercentage = SleepMetrics.DEFAULT_LIGHT_SLEEP_PERCENTAGE,
+            deepSleepPercentage = SleepMetrics.DEFAULT_DEEP_SLEEP_PERCENTAGE,
+            remSleepPercentage = SleepMetrics.DEFAULT_REM_SLEEP_PERCENTAGE
+        )
+    }
+    
+    // Usa o SleepMetrics para calcular todas as porcentagens de uma vez
+    val percentages = SleepMetrics.calculateAllStagePercentages(stages)
     
     return this.copy(
-        lightSleepPercentage = lightPercentage,
-        deepSleepPercentage = deepPercentage,
-        remSleepPercentage = remPercentage
+        lightSleepPercentage = percentages[SleepStageType.LIGHT] ?: 0.0,
+        deepSleepPercentage = percentages[SleepStageType.DEEP] ?: 0.0,
+        remSleepPercentage = percentages[SleepStageType.REM] ?: 0.0
     )
 }
 

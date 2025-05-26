@@ -21,6 +21,6 @@ data class Spacing(
 )
 
 /**
- * Fornece acesso aos espaçamentos em qualquer lugar do aplicativo
+ * Fornece acesso aos espaçamentos padronizados em qualquer lugar do aplicativo
  */
 val LocalSpacing = staticCompositionLocalOf { Spacing() }

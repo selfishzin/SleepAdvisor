@@ -2,7 +2,7 @@ package com.example.sleepadvisor.presentation.screens.sleep
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Loop
@@ -41,7 +41,9 @@ fun AddManualSleepScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    @Suppress("UNUSED_VARIABLE")
     val scope = rememberCoroutineScope()
+    // Scope mantido para possível uso futuro
 
     var selectedDate by remember { mutableStateOf(LocalDate.now()) }
     var startTimeState by remember { mutableStateOf(LocalTime.of(22, 0)) }
@@ -161,7 +163,7 @@ fun AddManualSleepScreen(
                 title = { Text("Adicionar Sono Manualmente") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Voltar")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
                     }
                 }
             )

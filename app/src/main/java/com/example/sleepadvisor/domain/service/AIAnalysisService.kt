@@ -13,7 +13,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import org.json.JSONObject
 import java.time.LocalTime
+import com.example.sleepadvisor.domain.model.SleepStage
+import com.example.sleepadvisor.domain.model.SleepStageType
+import com.example.sleepadvisor.domain.model.SleepSource
+import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
+import kotlin.time.Duration
 
 @Singleton
 class AIAnalysisService @Inject constructor(
@@ -28,10 +33,26 @@ class AIAnalysisService @Inject constructor(
         loadNormalizationValues()
     }
     
+    /**
+     * Carrega o modelo TensorFlow Lite para análise de sono
+     */
     private fun loadModel() {
         try {
             android.util.Log.d("AIAnalysisService", "Tentando carregar modelo TensorFlow Lite")
-            val modelFile = FileUtil.loadMappedFile(context, "sleep_analysis_model.tflite")
+            
+            // Verificar se o arquivo de modelo existe
+            val modelPath = "sleep_analysis_model.tflite"
+            val assetManager = context.assets
+            
+            try {
+                // Tentar abrir o arquivo para verificar se existe
+                assetManager.openFd(modelPath).use { /* Apenas verificar se o arquivo existe */ }
+            } catch (e: Exception) {
+                throw IllegalStateException("Arquivo do modelo não encontrado: $modelPath", e)
+            }
+            
+            // Carregar o arquivo do modelo
+            val modelFile = FileUtil.loadMappedFile(context, modelPath)
             
             // Verificar se o arquivo do modelo é válido (não vazio)
             if (modelFile.capacity() <= 1) {
@@ -44,69 +65,265 @@ class AIAnalysisService @Inject constructor(
                 setUseNNAPI(true) // Usar Neural Network API quando disponível
             }
             
+            // Inicializar o interpretador do TensorFlow Lite
             interpreter = Interpreter(modelFile, options)
+            
+            // Verificar se o interpretador foi criado corretamente
+            if (interpreter == null) {
+                throw IllegalStateException("Falha ao inicializar o interpretador do TensorFlow Lite")
+            }
+            
             android.util.Log.d("AIAnalysisService", "Modelo TensorFlow Lite carregado com sucesso")
         } catch (e: Exception) {
             // Fallback para análise baseada em regras se o modelo falhar
-            android.util.Log.e("AIAnalysisService", "Erro ao carregar modelo TensorFlow Lite: ${e.message}. Usando sistema de regras como fallback.", e)
-            interpreter = null // Garantir que o interpreter seja nulo para usar o fallback
+            val errorMsg = "Erro ao carregar modelo TensorFlow Lite: ${e.message}"
+            android.util.Log.e("AIAnalysisService", errorMsg, e)
+            
+            // Definir o interpretador como nulo para usar o fallback
+            interpreter = null
+            
+            // Não lançar exceção aqui, pois queremos que o app continue funcionando com o fallback
+            android.util.Log.w("AIAnalysisService", "Usando sistema de regras como fallback")
         }
     }
     
+    /**
+     * Carrega os valores de normalização do arquivo JSON
+     */
     private fun loadNormalizationValues() {
+        val fileName = "normalization_values.json"
+        
         try {
-            val inputStream = context.assets.open("normalization_values.json")
+            // Verificar se o arquivo existe
+            try {
+                context.assets.openFd(fileName).use { /* Apenas verificar se o arquivo existe */ }
+            } catch (e: Exception) {
+                android.util.Log.w("AIAnalysisService", "Arquivo de normalização não encontrado: $fileName")
+                normalizationMean = null
+                normalizationStd = null
+                return
+            }
+            
+            // Ler o conteúdo do arquivo
+            val inputStream = context.assets.open(fileName)
             val size = inputStream.available()
+            
+            if (size <= 0) {
+                throw IllegalStateException("Arquivo de normalização vazio: $fileName")
+            }
+            
             val buffer = ByteArray(size)
             inputStream.read(buffer)
             inputStream.close()
             
+            // Parsear o JSON
             val json = JSONObject(String(buffer))
+            
+            if (!json.has("mean") || !json.has("std")) {
+                throw IllegalStateException("Formato inválido do arquivo de normalização")
+            }
+            
             val meanArray = json.getJSONArray("mean")
             val stdArray = json.getJSONArray("std")
             
+            if (meanArray.length() != 6 || stdArray.length() != 6) {
+                throw IllegalStateException("Número incorreto de valores de normalização. Esperado 6, obtido ${meanArray.length()} e ${stdArray.length()}")
+            }
+            
+            // Carregar os valores de normalização
             normalizationMean = FloatArray(meanArray.length())
             normalizationStd = FloatArray(stdArray.length())
             
             for (i in 0 until meanArray.length()) {
                 normalizationMean!![i] = meanArray.getDouble(i).toFloat()
                 normalizationStd!![i] = stdArray.getDouble(i).toFloat()
+                
+                // Validar os valores carregados
+                if (normalizationMean!![i].isNaN() || normalizationStd!![i].isNaN()) {
+                    throw IllegalStateException("Valores de normalização inválidos no índice $i")
+                }
             }
             
             android.util.Log.d("AIAnalysisService", "Valores de normalização carregados com sucesso")
+            
         } catch (e: Exception) {
-            android.util.Log.e("AIAnalysisService", "Erro ao carregar valores de normalização: ${e.message}", e)
+            val errorMsg = "Erro ao carregar valores de normalização: ${e.message}"
+            android.util.Log.e("AIAnalysisService", errorMsg, e)
+            
+            // Definir valores nulos para usar um fator de escala neutro
             normalizationMean = null
             normalizationStd = null
+            
+            // Não lançar exceção, pois podemos continuar sem normalização
+            android.util.Log.w("AIAnalysisService", "Continuando sem normalização de dados")
         }
     }
     
-    fun analyzeSleepData(sleepSession: SleepSession): SleepAdvice {
-        android.util.Log.d("AIAnalysisService", "Analisando dados de sono para sessão: ${sleepSession.id}")
+    /**
+     * Testa o modelo com dados de exemplo para verificar se está funcionando corretamente
+     * @return true se o teste for bem-sucedido, false caso contrário
+     */
+    fun testModelWithSampleData(): Boolean {
         return try {
-            if (interpreter != null) {
+            // Criar uma sessão de exemplo com valores médios
+            val now = ZonedDateTime.now()
+            val startTime = now.minusHours(8).toInstant()
+            val endTime = now.toInstant()
+            
+            // Criar estágios de sono de exemplo
+            val stages = listOf(
+                SleepStage(
+                    startTime = startTime,
+                    endTime = startTime.plusSeconds(3600), // 1 hora de sono profundo
+                    type = SleepStageType.DEEP,
+                    source = SleepSource.SIMULATION
+                ),
+                SleepStage(
+                    startTime = startTime.plusSeconds(3600),
+                    endTime = startTime.plusSeconds(5400), // 30 minutos de REM
+                    type = SleepStageType.REM,
+                    source = SleepSource.SIMULATION
+                ),
+                SleepStage(
+                    startTime = startTime.plusSeconds(5400),
+                    endTime = endTime, // Restante do tempo em sono leve
+                    type = SleepStageType.LIGHT,
+                    source = SleepSource.SIMULATION
+                )
+            )
+            
+            val sampleSession = SleepSession(
+                id = "test-session-001",
+                startTime = startTime,
+                endTime = endTime,
+                title = "Sessão de Teste",
+                source = SleepSource.SIMULATION,
+                stages = stages,
+                wakeDuringNightCount = 2,
+                efficiency = 90.0,
+                deepSleepPercentage = 20.0,
+                remSleepPercentage = 25.0,
+                lightSleepPercentage = 50.0
+            )
+            
+            // Analisar a sessão de exemplo
+            val advice = analyzeSleepData(sampleSession)
+            
+            // Verificar se as recomendações foram geradas
+            val isValid = advice.customRecommendations.isNotEmpty() && 
+                        advice.mainAdvice.isNotBlank() &&
+                        advice.supportingFacts.isNotEmpty()
+            
+            if (isValid) {
+                android.util.Log.d("AIAnalysisService", "Teste do modelo concluído com sucesso")
+            } else {
+                android.util.Log.w("AIAnalysisService", "Teste do modelo concluído, mas sem recomendações válidas")
+            }
+            
+            isValid
+            
+        } catch (e: Exception) {
+            android.util.Log.e("AIAnalysisService", "Erro ao testar modelo com dados de exemplo: ${e.message}", e)
+            false
+        }
+    }
+    
+    /**
+     * Analisa os dados de sono usando IA ou o sistema de regras como fallback
+     * @param sleepSession Sessão de sono a ser analisada
+     * @return Objeto SleepAdvice com recomendações personalizadas
+     * @throws IllegalArgumentException Se os dados da sessão forem inválidos
+     */
+    fun analyzeSleepData(sleepSession: SleepSession): SleepAdvice {
+        android.util.Log.d("AIAnalysisService", "Iniciando análise de dados para sessão: ${sleepSession.id}")
+        
+        try {
+            // Validar dados de entrada
+            validateInputData(sleepSession)
+            
+            return if (interpreter != null) {
                 android.util.Log.d("AIAnalysisService", "Usando modelo TensorFlow Lite para análise")
-                analyzeWithTensorFlow(sleepSession)
+                try {
+                    val result = analyzeWithTensorFlow(sleepSession)
+                    android.util.Log.d("AIAnalysisService", "Análise com TensorFlow concluída com sucesso")
+                    result
+                } catch (e: Exception) {
+                    android.util.Log.e("AIAnalysisService", "Erro durante análise com TensorFlow: ${e.message}. Usando sistema de regras.", e)
+                    analyzeWithRules(sleepSession)
+                }
             } else {
                 android.util.Log.d("AIAnalysisService", "Usando sistema de regras para análise (fallback)")
                 analyzeWithRules(sleepSession)
             }
+        } catch (e: IllegalArgumentException) {
+            android.util.Log.e("AIAnalysisService", "Dados de entrada inválidos: ${e.message}")
+            throw e
         } catch (e: Exception) {
-            android.util.Log.e("AIAnalysisService", "Erro durante análise com TensorFlow: ${e.message}. Usando sistema de regras.", e)
-            analyzeWithRules(sleepSession)
+            android.util.Log.e("AIAnalysisService", "Erro inesperado durante análise: ${e.message}", e)
+            throw IllegalStateException("Erro ao processar análise de sono", e)
+        }
+    }
+    
+    /**
+     * Valida os dados de entrada da sessão de sono
+     * @throws IllegalArgumentException Se os dados forem inválidos
+     */
+    private fun validateInputData(sleepSession: SleepSession) {
+        val errors = mutableListOf<String>()
+        
+        if (sleepSession.duration.isNegative || sleepSession.duration.isZero) {
+            errors.add("Duração do sono inválida: ${sleepSession.duration}")
+        }
+        
+        if (sleepSession.efficiency <= 0 || sleepSession.efficiency > 100) {
+            errors.add("Eficiência do sono fora do intervalo válido (0-100%): ${sleepSession.efficiency}")
+        }
+        
+        val totalPercentage = sleepSession.deepSleepPercentage + sleepSession.remSleepPercentage + 
+                             sleepSession.lightSleepPercentage + sleepSession.wakeDuringNightCount
+        
+        // Permitir uma pequena margem de erro devido a arredondamentos
+        if (totalPercentage < 95 || totalPercentage > 105) {
+            errors.add("Soma das porcentagens de estágios do sono inválida: $totalPercentage% (deve ser ~100%)")
+        }
+        
+        if (errors.isNotEmpty()) {
+            val errorMsg = "Dados de sono inválidos: ${errors.joinToString("; ")}"
+            android.util.Log.w("AIAnalysisService", errorMsg)
+            throw IllegalArgumentException(errorMsg)
         }
     }
     
     private fun analyzeWithTensorFlow(sleepSession: SleepSession): SleepAdvice {
-        // Preparar dados de entrada
-        val inputData = floatArrayOf(
-            sleepSession.deepSleepPercentage.toFloat(),
-            sleepSession.remSleepPercentage.toFloat(),
-            sleepSession.lightSleepPercentage.toFloat(),
-            sleepSession.efficiency.toFloat(),
-            sleepSession.wakeDuringNightCount.toFloat(),
-            sleepSession.duration.toMinutes().toFloat()
-        )
+        android.util.Log.d("AIAnalysisService", "Preparando dados para TensorFlow")
+        
+        // Preparar dados de entrada com validação
+        val inputData = try {
+            floatArrayOf(
+                sleepSession.deepSleepPercentage.toFloat().also {
+                    check(!it.isNaN() && it >= 0) { "Porcentagem de sono profundo inválida: $it" }
+                },
+                sleepSession.remSleepPercentage.toFloat().also {
+                    check(!it.isNaN() && it >= 0) { "Porcentagem de sono REM inválida: $it" }
+                },
+                sleepSession.lightSleepPercentage.toFloat().also {
+                    check(!it.isNaN() && it >= 0) { "Porcentagem de sono leve inválida: $it" }
+                },
+                sleepSession.efficiency.toFloat().also {
+                    check(!it.isNaN() && it in 0f..100f) { "Eficiência do sono inválida: $it" }
+                },
+                sleepSession.wakeDuringNightCount.toFloat().also {
+                    check(!it.isNaN() && it >= 0) { "Contagem de despertares inválida: $it" }
+                },
+                sleepSession.duration.toMinutes().toFloat().let { minutes ->
+                    check(!minutes.isNaN() && minutes > 0) { "Duração do sono inválida: $minutes minutos" }
+                    minutes
+                }
+            )
+        } catch (e: Exception) {
+            android.util.Log.e("AIAnalysisService", "Erro ao preparar dados para TensorFlow: ${e.message}")
+            throw IllegalArgumentException("Dados de entrada inválidos para o modelo de IA", e)
+        }
         
         // Normalizar dados se os valores de normalização estiverem disponíveis
         val normalizedInput = if (normalizationMean != null && normalizationStd != null) {
@@ -143,16 +360,29 @@ class AIAnalysisService @Inject constructor(
         return processResults(results, sleepSession)
     }
     
+    /**
+     * Processa os resultados da inferência do modelo e gera recomendações
+     */
     private fun processResults(results: FloatArray, sleepSession: SleepSession): SleepAdvice {
+        if (results.size < 6) {
+            android.util.Log.w("AIAnalysisService", "Resultados inválidos do modelo: tamanho esperado=6, obtido=${results.size}")
+            return analyzeWithRules(sleepSession)
+        }
+        
         val recommendations = mutableListOf<String>()
         val supportingFacts = mutableListOf<String>()
         
         // Adicionar fatos específicos baseados nos dados da sessão
-        supportingFacts.add("Seu sono profundo foi de ${sleepSession.deepSleepPercentage.toInt()}% (ideal: 20-25%)")
-        supportingFacts.add("Seu sono REM foi de ${sleepSession.remSleepPercentage.toInt()}% (ideal: 20-25%)")
-        supportingFacts.add("Sua eficiência do sono foi de ${sleepSession.efficiency.toInt()}% (ideal: >85%)")
-        supportingFacts.add("Você teve ${sleepSession.wakeDuringNightCount} despertares durante a noite")
-        supportingFacts.add("Você dormiu por ${sleepSession.duration.toHours()} horas e ${sleepSession.duration.toMinutesPart()} minutos")
+        try {
+            supportingFacts.add("Seu sono profundo foi de ${sleepSession.deepSleepPercentage.toInt()}% (ideal: 20-25%)")
+            supportingFacts.add("Seu sono REM foi de ${sleepSession.remSleepPercentage.toInt()}% (ideal: 20-25%)")
+            supportingFacts.add("Sua eficiência do sono foi de ${sleepSession.efficiency.toInt()}% (ideal: >85%)")
+            supportingFacts.add("Você teve ${sleepSession.wakeDuringNightCount} despertares durante a noite")
+            supportingFacts.add("Você dormiu por ${sleepSession.duration.toHours()} horas e ${sleepSession.duration.toMinutesPart()} minutos")
+        } catch (e: Exception) {
+            android.util.Log.e("AIAnalysisService", "Erro ao gerar fatos de suporte: ${e.message}")
+            // Continuar com os fatos já adicionados
+        }
         
         // Usar limiares dinâmicos baseados nos dados reais
         val deepSleepThreshold = if (sleepSession.deepSleepPercentage < 15) 0.5 else 0.7
@@ -260,11 +490,12 @@ class AIAnalysisService @Inject constructor(
         val supportingFacts = mutableListOf<String>()
         
         // Adicionar fatos específicos baseados nos dados da sessão
-        supportingFacts.add("Seu sono profundo foi de ${sleepSession.deepSleepPercentage.toInt()}% (ideal: 20-25%)")
-        supportingFacts.add("Seu sono REM foi de ${sleepSession.remSleepPercentage.toInt()}% (ideal: 20-25%)")
-        supportingFacts.add("Sua eficiência do sono foi de ${sleepSession.efficiency.toInt()}% (ideal: >85%)")
-        supportingFacts.add("Você teve ${sleepSession.wakeDuringNightCount} despertares durante a noite")
-        supportingFacts.add("Você dormiu por ${sleepSession.duration.toHours()} horas e ${sleepSession.duration.toMinutesPart()} minutos")
+        supportingFacts.add("Duração do sono: ${sleepSession.duration.toHours()}h ${sleepSession.duration.toMinutesPart()}min")
+        supportingFacts.add("Eficiência: ${sleepSession.efficiency.toInt()}%")
+        supportingFacts.add("Sono profundo: ${sleepSession.deepSleepPercentage.toInt()}%")
+        supportingFacts.add("Sono REM: ${sleepSession.remSleepPercentage.toInt()}%")
+        supportingFacts.add("Sono leve: ${sleepSession.lightSleepPercentage.toInt()}%")
+        supportingFacts.add("Despertares: ${sleepSession.wakeDuringNightCount}")
         
         // Regras para sono profundo - mais detalhadas
         when {

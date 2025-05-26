@@ -134,10 +134,11 @@ fun SleepAnalysisContent(
                 }
                 
                 // Seção de análise de tendências
-                uiState.trendAnalysis?.let { trendAnalysis ->
-                    item {
-                        SleepTrendAnalysisCard(trendAnalysis = trendAnalysis)
-                    }
+                item {
+                    SleepTrendAnalysisCard(
+                        sleepUiState = uiState,
+                        trendAnalysis = uiState.trendAnalysis
+                    )
                 }
                 
                 // Seção de análise de qualidade da última sessão

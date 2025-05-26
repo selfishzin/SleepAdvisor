@@ -7,6 +7,10 @@ import com.example.sleepadvisor.domain.model.SleepAdvice
 import com.example.sleepadvisor.domain.model.SleepQualityAnalysis
 import com.example.sleepadvisor.domain.model.SleepRecommendations
 import com.example.sleepadvisor.domain.model.SleepSession
+import com.example.sleepadvisor.domain.model.SleepMetrics
+import com.example.sleepadvisor.domain.model.SleepSource
+import com.example.sleepadvisor.domain.model.SleepStage
+import com.example.sleepadvisor.domain.model.SleepStageType
 import com.example.sleepadvisor.domain.model.SleepTrendAnalysis
 import com.example.sleepadvisor.domain.repository.SleepAnalysisRepository
 import com.example.sleepadvisor.domain.usecase.AnalyzeSleepQualityUseCase
@@ -22,8 +26,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import com.example.sleepadvisor.domain.model.SleepStageType
 import java.time.Duration
+import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import javax.inject.Inject
@@ -34,13 +38,13 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class SleepAnalysisViewModel @Inject constructor(
-    private val getSleepSessionsUseCase: GetSleepSessionsUseCase,
+    @Suppress("UNUSED_PARAMETER") private val getSleepSessionsUseCase: GetSleepSessionsUseCase,
     private val analyzeSleepQualityUseCase: AnalyzeSleepQualityUseCase,
     private val analyzeSleepTrendsUseCase: AnalyzeSleepTrendsUseCase,
-    private val detectNapsUseCase: DetectNapsUseCase,
+    @Suppress("UNUSED_PARAMETER") private val detectNapsUseCase: DetectNapsUseCase,
     private val generateSleepRecommendationsUseCase: GenerateSleepRecommendationsUseCase,
-    private val getSleepSessionDetailsUseCase: GetSleepSessionDetailsUseCase,
-    private val sleepAnalysisRepository: SleepAnalysisRepository
+    @Suppress("UNUSED_PARAMETER") private val getSleepSessionDetailsUseCase: GetSleepSessionDetailsUseCase,
+    @Suppress("UNUSED_PARAMETER") private val sleepAnalysisRepository: SleepAnalysisRepository
 ) : ViewModel() {
 
     // Estado da UI observável pela camada de apresentação
@@ -59,29 +63,70 @@ class SleepAnalysisViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 // Aguardar o carregamento dos dados
-                if (_uiState.value.lastSession != null) {
-                    val lastSession = _uiState.value.lastSession!!
-                    
-                    // Obter recomendações de IA para a última sessão
-                    android.util.Log.d("SleepAnalysisVM", "Solicitando recomendações de IA para sessão: ${lastSession.id}")
-                    val aiAdvice = sleepAnalysisRepository.analyzeSleepSession(lastSession)
-                    android.util.Log.d("SleepAnalysisVM", "Recomendações de IA recebidas: ${aiAdvice.mainAdvice}")
-                    android.util.Log.d("SleepAnalysisVM", "Recomendações personalizadas: ${aiAdvice.customRecommendations.joinToString()}")
-                    
-                    // Atualizar o estado da UI com as recomendações de IA
-                    _uiState.update { currentState ->
-                        currentState.copy(
-                            aiAdvice = aiAdvice
-                        )
+                val lastSession = _uiState.value.lastSession
+                
+                if (lastSession != null) {
+                    // Validar dados da sessão
+                    if (isValidSleepSession(lastSession)) {
+                        android.util.Log.d("SleepAnalysisVM", "Sessão válida encontrada. ID: ${lastSession.id}, Data: ${lastSession.startTime}")
+                        
+                        // Obter recomendações de IA para a última sessão
+                        android.util.Log.d("SleepAnalysisVM", "Solicitando recomendações de IA para sessão: ${lastSession.id}")
+                        android.util.Log.d("SleepAnalysisVM", "Dados da sessão: " +
+                                "Duração: ${lastSession.duration.toHours()}h${lastSession.duration.toMinutesPart()}min, " +
+                                "Eficiência: ${lastSession.efficiency}%, " +
+                                "Sono profundo: ${lastSession.deepSleepPercentage}%, " +
+                                "Sono REM: ${lastSession.remSleepPercentage}%")
+                        
+                        val aiAdvice = sleepAnalysisRepository.analyzeSleepSession(lastSession)
+                        
+                        // Validar recomendações recebidas
+                        if (aiAdvice.customRecommendations.isNotEmpty()) {
+                            android.util.Log.d("SleepAnalysisVM", "Recomendações de IA recebidas: ${aiAdvice.mainAdvice}")
+                            android.util.Log.d("SleepAnalysisVM", "Total de recomendações: ${aiAdvice.customRecommendations.size}")
+                            
+                            // Atualizar o estado da UI com as recomendações de IA
+                            _uiState.update { currentState ->
+                                currentState.copy(
+                                    aiAdvice = aiAdvice
+                                )
+                            }
+                            android.util.Log.d("SleepAnalysisVM", "Recomendações de IA atualizadas na UI")
+                        } else {
+                            android.util.Log.w("SleepAnalysisVM", "Nenhuma recomendação personalizada retornada pela IA")
+                            _uiState.update { it.copy(error = "Não foi possível gerar recomendações personalizadas") }
+                        }
+                    } else {
+                        android.util.Log.w("SleepAnalysisVM", "Sessão de sono inválida para análise de IA")
+                        _uiState.update { it.copy(error = "Dados de sono insuficientes para análise") }
                     }
-                    android.util.Log.d("SleepAnalysisVM", "Recomendações de IA obtidas com sucesso")
                 } else {
                     android.util.Log.d("SleepAnalysisVM", "Não foi possível obter recomendações de IA: sessão não disponível")
+                    _uiState.update { it.copy(error = "Nenhuma sessão de sono recente encontrada") }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SleepAnalysisVM", "Erro ao obter recomendações de IA: ${e.message}", e)
+                val errorMsg = "Erro ao obter recomendações de IA: ${e.message}"
+                android.util.Log.e("SleepAnalysisVM", errorMsg, e)
+                _uiState.update { it.copy(error = errorMsg) }
             }
         }
+    }
+    
+    /**
+     * Valida se uma sessão de sono contém dados suficientes para análise
+     */
+    private fun isValidSleepSession(session: SleepSession): Boolean {
+        // Verifica se a eficiência está dentro da faixa válida (0-100)
+        val isEfficiencyValid = session.efficiency in 0.0..100.0
+        
+        return session.duration.toHours() > 0 && // Pelo menos 1 hora de sono
+               isEfficiencyValid && // Eficiência entre 0 e 100
+               session.deepSleepPercentage >= 0 && // Porcentagens válidas
+               session.remSleepPercentage >= 0 &&
+               session.lightSleepPercentage <= 100.0 && // Não pode ser maior que 100%
+               session.deepSleepPercentage <= 100.0 && // Não pode ser maior que 100%
+               session.remSleepPercentage <= 100.0 && // Não pode ser maior que 100%
+               session.wakeDuringNightCount >= 0
     }
 
     /**
@@ -89,7 +134,7 @@ class SleepAnalysisViewModel @Inject constructor(
      */
     fun loadData() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, error = null) }
             
             try {
                 // Obter sessões de sono consolidadas dos últimos 7 dias
@@ -166,6 +211,113 @@ class SleepAnalysisViewModel @Inject constructor(
                     it.copy(
                         isLoading = false,
                         error = "Erro inesperado: ${e.message}"
+                    )
+                }
+            }
+        }
+    }
+    
+    /**
+     * Testa o modelo de IA com dados de exemplo para verificar se está funcionando corretamente
+     */
+    fun testModelWithSampleData() {
+        viewModelScope.launch {
+            try {
+                _uiState.update { it.copy(isLoading = true, error = null) }
+                
+                // Criar uma sessão de exemplo para teste
+                val now = ZonedDateTime.now()
+                val startTime = now.minusHours(8).toInstant()
+                val endTime = now.toInstant()
+                
+                // Criar estágios de sono de exemplo
+                val stages = listOf(
+                    SleepStage(
+                        startTime = startTime,
+                        endTime = startTime.plusSeconds(3600), // 1 hora de sono profundo
+                        type = SleepStageType.DEEP,
+                        source = SleepSource.SIMULATION
+                    ),
+                    SleepStage(
+                        startTime = startTime.plusSeconds(3600),
+                        endTime = startTime.plusSeconds(5400), // 30 minutos de REM
+                        type = SleepStageType.REM,
+                        source = SleepSource.SIMULATION
+                    ),
+                    SleepStage(
+                        startTime = startTime.plusSeconds(5400),
+                        endTime = endTime, // Restante do tempo em sono leve
+                        type = SleepStageType.LIGHT,
+                        source = SleepSource.SIMULATION
+                    )
+                )
+                
+                val sampleSession = SleepSession(
+                    id = "test-session-001",
+                    startTime = startTime,
+                    endTime = endTime,
+                    title = "Sessão de Teste",
+                    source = SleepSource.SIMULATION,
+                    stages = stages,
+                    wakeDuringNightCount = 2,
+                    efficiency = 90.0,
+                    deepSleepPercentage = 20.0,
+                    remSleepPercentage = 25.0,
+                    lightSleepPercentage = 50.0
+                )
+                
+                android.util.Log.d("SleepAnalysisVM", "Testando modelo com dados de exemplo...")
+                
+                // Validar a sessão de exemplo
+                if (isValidSleepSession(sampleSession)) {
+                    android.util.Log.d("SleepAnalysisVM", "Sessão de exemplo válida. Iniciando análise...")
+                    
+                    // Analisar a sessão de exemplo
+                    val aiAdvice = sleepAnalysisRepository.analyzeSleepSession(sampleSession)
+                    
+                    if (aiAdvice.customRecommendations.isNotEmpty()) {
+                        android.util.Log.d("SleepAnalysisVM", "Teste do modelo bem-sucedido!")
+                        android.util.Log.d("SleepAnalysisVM", "Recomendação principal: ${aiAdvice.mainAdvice}")
+                        android.util.Log.d("SleepAnalysisVM", "Total de recomendações: ${aiAdvice.customRecommendations.size}")
+                        
+                        _uiState.update { 
+                            it.copy(
+                                isLoading = false,
+                                testResult = "Teste bem-sucedido! ${aiAdvice.customRecommendations.size} recomendações geradas.",
+                                testSuccess = true
+                            )
+                        }
+                    } else {
+                        val errorMsg = "O modelo foi executado, mas não gerou recomendações"
+                        android.util.Log.w("SleepAnalysisVM", errorMsg)
+                        _uiState.update { 
+                            it.copy(
+                                isLoading = false,
+                                testResult = errorMsg,
+                                testSuccess = false
+                            )
+                        }
+                    }
+                } else {
+                    val errorMsg = "Sessão de exemplo inválida para teste"
+                    android.util.Log.e("SleepAnalysisVM", errorMsg)
+                    _uiState.update { 
+                        it.copy(
+                            isLoading = false,
+                            testResult = errorMsg,
+                            testSuccess = false
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                val errorMsg = "Erro ao testar o modelo: ${e.message}"
+                android.util.Log.e("SleepAnalysisVM", errorMsg, e)
+                _uiState.update { 
+                    it.copy(
+                        isLoading = false,
+                        testResult = errorMsg,
+                        testSuccess = false,
+                        error = errorMsg
                     )
                 }
             }
@@ -335,21 +487,11 @@ class SleepAnalysisViewModel @Inject constructor(
     }
     
     private fun calculateSleepEfficiency(session: SleepSession): Int {
-        if (session.duration.isZero || session.duration.isNegative) return 0
-        
-        val totalSleepTime = session.stages
-            .filter { it.type != SleepStageType.AWAKE }
-            .sumOf { it.duration.seconds }
-        
-        val efficiency = (totalSleepTime.toDouble() / session.duration.seconds) * 100.0
-        return efficiency.toInt().coerceIn(0, 100)
+        return SleepMetrics.calculateSleepEfficiency(session.stages, session.duration)
     }
     
     private fun getTimeByStage(session: SleepSession): Map<SleepStageType, Duration> {
-        return session.stages.groupBy { it.type }
-            .mapValues { (_, stages) ->
-                stages.sumOf { it.duration.seconds }.let { Duration.ofSeconds(it) }
-            }
+        return SleepMetrics.calculateTimeByStage(session.stages)
     }
     
     private fun isBedtimeOptimal(session: SleepSession): Boolean {
@@ -359,20 +501,18 @@ class SleepAnalysisViewModel @Inject constructor(
     }
     
     private fun calculateSleepLatency(session: SleepSession): Duration? {
-        val firstSleepStage = session.stages.firstOrNull { it.type != SleepStageType.AWAKE } ?: return null
-        return Duration.between(session.startTime, firstSleepStage.startTime)
+        return SleepMetrics.calculateSleepLatency(session.stages, session.startTime)
     }
     
     private fun calculateREMEfficiency(session: SleepSession): Int {
-        val timeByStage = getTimeByStage(session)
-        val totalSleepTime = timeByStage
-            .filter { it.key != SleepStageType.AWAKE }
-            .values.sumOf { it.seconds }
+        if (session.stages.isEmpty()) return 0
         
-        if (totalSleepTime <= 0) return 0
+        val remPercentage = SleepMetrics.calculateStagePercentage(
+            stages = session.stages,
+            targetStage = SleepStageType.REM
+        )
         
-        val remTime = timeByStage[SleepStageType.REM]?.seconds ?: 0
-        return ((remTime.toDouble() / totalSleepTime) * 100).toInt()
+        return remPercentage.toInt()
     }
     
     /**
@@ -427,6 +567,7 @@ class SleepAnalysisViewModel @Inject constructor(
  */
 data class SleepAnalysisUiState(
     val isLoading: Boolean = false,
+    val error: String? = null,
     val emptySessions: Boolean = false,
     val sessions: List<SleepSession> = emptyList(),
     val lastSession: SleepSession? = null,
@@ -435,11 +576,12 @@ data class SleepAnalysisUiState(
     val napAnalyses: List<NapAnalysis> = emptyList(),
     val recommendations: SleepRecommendations? = null,
     val aiAdvice: SleepAdvice? = null,
+    val testResult: String? = null,
+    val testSuccess: Boolean? = null,
     val selectedSession: SleepSession? = null,
     val selectedSessionAnalysis: SleepQualityAnalysis? = null,
     val sessionSpecificRecommendations: List<String> = emptyList(),
     val showNapsOnly: Boolean = false,
     val analysisPeriodStart: ZonedDateTime = ZonedDateTime.now().minusDays(7),
-    val analysisPeriodEnd: ZonedDateTime = ZonedDateTime.now(),
-    val error: String? = null
+    val analysisPeriodEnd: ZonedDateTime = ZonedDateTime.now()
 )

@@ -2,7 +2,7 @@ package com.example.sleepadvisor.presentation.screens.sleep
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Loop
@@ -32,7 +32,9 @@ fun EditManualSleepScreen(
     onNavigateBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    @Suppress("UNUSED_VARIABLE")
     val scope = rememberCoroutineScope()
+    // Scope mantido para possível uso futuro
 
     // Load the session when the screen is first displayed
     LaunchedEffect(sessionId) {
@@ -158,7 +160,7 @@ fun EditManualSleepScreen(
                 title = { Text("Editar Sono") },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Voltar")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
                     }
                 }
             )

@@ -8,27 +8,34 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.sleepadvisor.domain.model.SleepSession
-import com.example.sleepadvisor.domain.model.SleepStageType
 import com.example.sleepadvisor.presentation.screens.sleep.SleepViewModel
-import com.example.sleepadvisor.presentation.screens.home.components.SleepSessionCard
-import com.example.sleepadvisor.ui.components.SleepCard
-import com.example.sleepadvisor.ui.theme.LocalSpacing
-import java.time.*
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import java.time.Duration
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
+import com.example.sleepadvisor.ui.theme.LocalSpacing
+import com.example.sleepadvisor.ui.components.SleepCard
+import com.example.sleepadvisor.presentation.screens.home.components.SleepSessionCard
+import com.example.sleepadvisor.domain.model.SleepSession
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun HomeScreen(
     viewModel: SleepViewModel,
     onNavigateToAnalysis: () -> Unit,
@@ -86,56 +93,6 @@ fun HomeScreen(
                     onAddSleepClick = { onNavigateToManualEntry(null) },
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
-
-            // Seção de estágios do sono
-            item {
-                val lastSession = uiState.lastSession
-                if (lastSession != null && lastSession.hasValidStages()) {
-                    // Garantir que a soma não ultrapasse 100%
-                    val total = (lastSession.lightSleepPercentage + lastSession.deepSleepPercentage + lastSession.remSleepPercentage).coerceAtMost(100.0)
-                    val awake = (100.0 - total).coerceIn(0.0, 100.0)
-                    
-                    SleepStagesCard(
-                        lightSleep = lastSession.lightSleepPercentage.toFloat(),
-                        deepSleep = lastSession.deepSleepPercentage.toFloat(),
-                        remSleep = lastSession.remSleepPercentage.toFloat(),
-                        awake = awake.toFloat(),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    // Mostrar mensagem quando não houver dados de estágios
-                    SleepCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { /* Nada a fazer */ }
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "Estágios do Sono",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = "Nenhum dado de estágios de sono disponível para a última sessão.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
-                            if (lastSession == null) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Button(onClick = { onNavigateToManualEntry(null) }) {
-                                    Text("Registrar sono")
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
             // Seção de histórico recente
@@ -262,10 +219,10 @@ private fun LastNightCard(
                         )
                     }
                     
-                    // Score de qualidade do sono (simplificado)
-                    val sleepScore = (session.efficiency ?: 0.8 * 100).toInt()
+                    // Garante que a eficiência esteja entre 0 e 100
+                    val efficiency = session.efficiency.coerceIn(0.0, 100.0)
                     SleepScoreIndicator(
-                        score = sleepScore,
+                        score = efficiency.toInt(),
                         size = 80.dp
                     )
                 }
@@ -280,7 +237,7 @@ private fun LastNightCard(
                     Text("Ver análise detalhada")
                     Spacer(modifier = Modifier.width(4.dp))
                     Icon(
-                        imageVector = Icons.Default.ArrowForward,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
@@ -310,204 +267,17 @@ private fun LastNightCard(
 }
 
 @Composable
-private fun SleepStagesCard(
-    lightSleep: Float,
-    deepSleep: Float,
-    remSleep: Float,
-    awake: Float,
-    modifier: Modifier = Modifier
-) {
-    val spacing = LocalSpacing.current
-    val total = (lightSleep + deepSleep + remSleep + awake).coerceAtLeast(1f) // Evitar divisão por zero
-    
-    // Normalizar valores para garantir que a soma seja 100%
-    val normalizedLight = (lightSleep / total * 100).coerceIn(0f, 100f)
-    val normalizedDeep = (deepSleep / total * 100).coerceIn(0f, 100f)
-    val normalizedRem = (remSleep / total * 100).coerceIn(0f, 100f)
-    val normalizedAwake = (awake / total * 100).coerceIn(0f, 100f)
-    
-    SleepCard(
-        modifier = modifier
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = "Estágios do sono",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            
-            Spacer(modifier = Modifier.height(spacing.medium))
-            
-            // Gráfico de barras simplificado
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = spacing.medium)
-            ) {
-                // Legenda e porcentagem para cada estágio
-                SleepStageBar(
-                    label = "Sono profundo",
-                    percentage = normalizedDeep,
-                    color = Color(0xFF4CAF50), // Verde
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                SleepStageBar(
-                    label = "Sono REM",
-                    percentage = normalizedRem,
-                    color = Color(0xFF2196F3), // Azul
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                SleepStageBar(
-                    label = "Sono leve",
-                    percentage = normalizedLight,
-                    color = Color(0xFFFFC107), // Âmbar
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                Spacer(modifier = Modifier.height(12.dp))
-                
-                SleepStageBar(
-                    label = "Acordado",
-                    percentage = normalizedAwake,
-                    color = Color(0xFF9E9E9E), // Cinza
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(spacing.medium))
-            
-            // Legenda
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(spacing.small)
-            ) {
-                SleepStageLegend(
-                    type = SleepStageType.LIGHT,
-                    percentage = lightSleep,
-                    color = MaterialTheme.colorScheme.secondary
-                )
-                SleepStageLegend(
-                    type = SleepStageType.DEEP,
-                    percentage = deepSleep,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                SleepStageLegend(
-                    type = SleepStageType.REM,
-                    percentage = remSleep,
-                    color = MaterialTheme.colorScheme.tertiary
-                )
-                SleepStageLegend(
-                    type = SleepStageType.AWAKE,
-                    percentage = awake,
-                    color = MaterialTheme.colorScheme.error
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SleepStageBar(
-    label: String,
-    percentage: Float,
-    color: Color,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        // Cor indicativa do estágio
-        Box(
-            modifier = Modifier
-                .size(16.dp)
-                .background(color, CircleShape)
-        )
-        
-        // Nome do estágio e porcentagem
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.width(100.dp)
-        )
-        
-        // Barra de progresso
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(fraction = percentage / 100f)
-                    .background(color, RoundedCornerShape(4.dp))
-            )
-        }
-        
-        // Porcentagem
-        Text(
-            text = "${percentage.toInt()}%",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(40.dp),
-            textAlign = TextAlign.End
-        )
-    }
-}
-
-@Composable
-private fun SleepStageLegend(
-    type: SleepStageType,
-    percentage: Float,
-    color: androidx.compose.ui.graphics.Color,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(12.dp)
-                .background(color, MaterialTheme.shapes.small)
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = type.displayName,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = "${percentage.toInt()}%",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-@Composable
 private fun SleepScoreIndicator(
     score: Int,
     size: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier
 ) {
+    // Garante que o score esteja entre 0 e 100
+    val safeScore = score.coerceIn(0, 100)
+    
     val color = when {
-        score >= 85 -> MaterialTheme.colorScheme.primary
-        score >= 70 -> MaterialTheme.colorScheme.secondary
+        safeScore >= 85 -> MaterialTheme.colorScheme.primary
+        safeScore >= 70 -> MaterialTheme.colorScheme.secondary
         else -> MaterialTheme.colorScheme.tertiary
     }
     
@@ -527,7 +297,7 @@ private fun SleepScoreIndicator(
         
         // Score
         Text(
-            text = "$score",
+            text = "$safeScore",
             style = MaterialTheme.typography.headlineLarge,
             color = color,
             fontWeight = FontWeight.Bold

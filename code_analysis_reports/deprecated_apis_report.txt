@@ -1,0 +1,8 @@
+=== APIs e Código Obsoleto Encontrado ===
+
+Arquivo: app\src\main\java\com\example\sleepadvisor\domain\service\SleepAIService.kt:394
+Linha 394: @Deprecated("Use SleepMetrics.getSleepQualityLabel() instead")
+
+Arquivo: app\src\main\java\com\example\sleepadvisor\domain\usecase\AnalyzeSleepQualityUseCase.kt:181
+Linha 181: @Deprecated("Use SleepMetrics.getSleepQualityLabel() instead")
+

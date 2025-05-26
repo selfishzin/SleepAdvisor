@@ -19,7 +19,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
-import com.google.accompanist.systemuicontroller.rememberSystemUiController
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 
 private val DarkColorScheme = darkColorScheme(
     primary = DarkBlue,
@@ -66,30 +67,27 @@ fun SleepAdvisorTheme(
     }
     
     val view = LocalView.current
-    val systemUiController = rememberSystemUiController()
-    
     // Configura a cor da barra de status e navegação
     SideEffect {
         val window = (view.context as? Activity)?.window ?: return@SideEffect
         
+        // Habilita o edge-to-edge
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        
         // Configura a cor da barra de status
-        systemUiController.setStatusBarColor(
-            color = Color.Transparent,
-            darkIcons = !darkTheme
-        )
+        window.statusBarColor = Color.Transparent.toArgb()
         
         // Configura a cor da barra de navegação
-        systemUiController.setNavigationBarColor(
-            color = colorScheme.surfaceColorAtElevation(3.dp),
-            darkIcons = !darkTheme,
-            navigationBarContrastEnforced = false
-        )
+        window.navigationBarColor = colorScheme.surfaceColorAtElevation(3.dp).toArgb()
         
-        // Configura o comportamento da barra de status
-        WindowCompat.getInsetsController(window, view).apply {
-            isAppearanceLightStatusBars = !darkTheme
-            isAppearanceLightNavigationBars = !darkTheme
-        }
+        // Configura o comportamento da barra de status e navegação
+        val windowInsetsController = WindowCompat.getInsetsController(window, view)
+        windowInsetsController.isAppearanceLightStatusBars = !darkTheme
+        windowInsetsController.isAppearanceLightNavigationBars = !darkTheme
+        
+        // Habilita o comportamento de imersão
+        windowInsetsController.systemBarsBehavior = 
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
     
     // Provedor de espaçamento personalizado

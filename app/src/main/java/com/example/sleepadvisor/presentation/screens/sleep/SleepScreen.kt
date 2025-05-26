@@ -20,6 +20,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.StarHalf
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.outlined.StarHalf
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Delete
@@ -70,6 +76,7 @@ import kotlinx.coroutines.launch
 @RequiresApi(Build.VERSION_CODES.S)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun SleepScreen(
     viewModel: SleepViewModel,
     onNavigateToManualEntry: (String?) -> Unit,
@@ -210,6 +217,7 @@ fun ErrorDialog(errorMessage: String, onDismiss: () -> Unit) {
 }
 
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun SleepContent(
     uiState: SleepViewModel.SleepUiState,
     onDeleteSessionRequest: (SleepSession) -> Unit,
@@ -250,7 +258,7 @@ fun SleepContent(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Ver Análise Detalhada de Tendências")
-                    Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(start = 4.dp))
                 }
                 Spacer(modifier = Modifier.height(8.dp))
             }
@@ -430,11 +438,11 @@ private fun evaluateSleepStageQuality(
 
     return when {
         percentage in excellentRange -> 
-            Pair(Color(0xFF4CAF50), if (isLight) Icons.Outlined.Star else Icons.Filled.Star)
+            Pair(Color(0xFF4CAF50), Icons.Filled.Star)
         percentage in idealRange -> 
-            Pair(Color(0xFF8BC34A), if (isLight) Icons.Outlined.StarHalf else Icons.Outlined.Star)
+            Pair(Color(0xFF8BC34A), Icons.Outlined.StarHalf)
         percentage in goodRange -> 
-            Pair(Color(0xFFFFC107), if (isLight) Icons.Outlined.StarOutline else Icons.Outlined.StarHalf)
+            Pair(Color(0xFFFFC107), Icons.Outlined.StarBorder)
         else -> 
             Pair(Color(0xFFF44336), Icons.Default.Warning)
     }

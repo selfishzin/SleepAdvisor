@@ -4,6 +4,7 @@ import java.time.Duration
 import java.time.LocalTime
 import java.time.ZoneId
 import kotlin.math.roundToInt
+import com.example.sleepadvisor.domain.model.SleepMetrics
 
 /**
  * Análises avançadas para a classe SleepSession.
@@ -15,14 +16,7 @@ import kotlin.math.roundToInt
  * @return Eficiência do sono em porcentagem (0-100)
  */
 fun SleepSession.calculateSleepEfficiency(): Int {
-    if (duration.isZero || duration.isNegative) return 0
-    
-    val totalSleepTime = stages
-        .filter { it.type != SleepStageType.AWAKE }
-        .sumOf { it.duration.seconds }
-    
-    val efficiency = (totalSleepTime.toDouble() / duration.seconds) * 100.0
-    return efficiency.roundToInt().coerceIn(0, 100)
+    return SleepMetrics.calculateSleepEfficiency(stages, duration)
 }
 
 /**
@@ -30,10 +24,7 @@ fun SleepSession.calculateSleepEfficiency(): Int {
  * @return Mapa com o tempo gasto em cada estágio
  */
 fun SleepSession.getTimeByStage(): Map<SleepStageType, Duration> {
-    return stages.groupBy { it.type }
-        .mapValues { (_, stages) ->
-            stages.sumOf { it.duration.seconds }.let { Duration.ofSeconds(it) }
-        }
+    return SleepMetrics.calculateTimeByStage(stages)
 }
 
 /**
@@ -51,22 +42,22 @@ fun SleepSession.isBedtimeOptimal(): Boolean {
  * @return Duração da latência do sono ou null se não for possível determinar
  */
 fun SleepSession.calculateSleepLatency(): Duration? {
-    val firstSleepStage = stages.firstOrNull { it.type != SleepStageType.AWAKE } ?: return null
-    return Duration.between(startTime, firstSleepStage.startTime)
+    return SleepMetrics.calculateSleepLatency(stages, startTime)
 }
 
 /**
  * Calcula a eficiência do sono REM.
- * @return Porcentagem do sono REM em relação ao tempo total de sono
+ * @return Porcentagem do sono REM em relação ao tempo total de sono (0-100)
  */
 fun SleepSession.calculateREMEfficiency(): Int {
-    val totalSleepTime = getTimeByStage()
+    val timeByStage = getTimeByStage()
+    val totalSleepTime = timeByStage
         .filter { it.key != SleepStageType.AWAKE }
         .values.sumOf { it.seconds }
     
     if (totalSleepTime <= 0) return 0
     
-    val remTime = getTimeByStage()[SleepStageType.REM]?.seconds ?: 0
+    val remTime = timeByStage[SleepStageType.REM]?.seconds ?: 0
     return ((remTime.toDouble() / totalSleepTime) * 100).roundToInt()
 }
 

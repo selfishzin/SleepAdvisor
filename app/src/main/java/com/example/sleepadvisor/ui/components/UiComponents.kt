@@ -151,8 +151,7 @@ fun CustomProgressBar(
     modifier: Modifier = Modifier,
     color: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
     backgroundColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.surfaceVariant,
-    height: Dp = 8.dp,
-    cornerRadius: Dp = 4.dp
+    height: Dp = 8.dp
 ) {
     val progressCoerced = progress.coerceIn(0f, 1f)
     

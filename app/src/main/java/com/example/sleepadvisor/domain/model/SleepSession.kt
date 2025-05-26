@@ -1,6 +1,7 @@
 package com.example.sleepadvisor.domain.model
 
 import androidx.health.connect.client.records.HeartRateRecord
+import com.example.sleepadvisor.domain.model.SleepMetrics
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -81,39 +82,74 @@ data class SleepSession(
      * Calcula e atualiza as porcentagens de cada estágio de sono com base nos estágios registrados.
      * @return Nova instância de SleepSession com as porcentagens atualizadas
      */
+    /**
+     * Calcula e atualiza as porcentagens de cada estágio de sono com base nos estágios registrados.
+     * Garante que as porcentagens estejam sempre entre 0 e 100 e que a soma não ultrapasse 100%.
+     * @return Nova instância de SleepSession com as porcentagens atualizadas
+     */
     fun calculateAndUpdateStagePercentages(): SleepSession {
         if (stages.isEmpty()) {
-            return this
+            return this.copy(
+                deepSleepPercentage = 0.0,
+                remSleepPercentage = 0.0,
+                lightSleepPercentage = 0.0,
+                efficiency = 0.0
+            )
         }
 
-        val totalSleepDuration = stages.sumOf { it.duration.toMillis() }
-        
-        if (totalSleepDuration == 0L) {
-            return this
-        }
-
-        val stageDurations = stages.groupBy { it.type }
-            .mapValues { (_, stages) -> 
-                stages.sumOf { it.duration.toMillis() } 
+        try {
+            val totalSleepDuration = stages.sumOf { it.duration.toMillis() }
+            
+            if (totalSleepDuration <= 0L) {
+                return this.copy(
+                    deepSleepPercentage = 0.0,
+                    remSleepPercentage = 0.0,
+                    lightSleepPercentage = 0.0,
+                    efficiency = 0.0
+                )
             }
 
-        val deepSleepMs = stageDurations[SleepStageType.DEEP] ?: 0L
-        val remSleepMs = stageDurations[SleepStageType.REM] ?: 0L
-        val lightSleepMs = stageDurations[SleepStageType.LIGHT] ?: 0L
-        val awakeMs = stageDurations[SleepStageType.AWAKE] ?: 0L
+            // Agrupa os estágios por tipo e calcula a duração total de cada um
+            val stageDurations = stages.groupBy { it.type }
+                .mapValues { (_, stageList) -> 
+                    stageList.sumOf { it.duration.toMillis() }.toDouble()
+                }
 
-        // Calcula as porcentagens
-        val deepSleepPercentage = (deepSleepMs.toDouble() / totalSleepDuration) * 100
-        val remSleepPercentage = (remSleepMs.toDouble() / totalSleepDuration) * 100
-        val lightSleepPercentage = (lightSleepMs.toDouble() / totalSleepDuration) * 100
 
-        return this.copy(
-            deepSleepPercentage = deepSleepPercentage,
-            remSleepPercentage = remSleepPercentage,
-            lightSleepPercentage = lightSleepPercentage,
-            // Calcula a eficiência como (tempo total de sono / tempo na cama) * 100
-            efficiency = ((totalSleepDuration - awakeMs).toDouble() / totalSleepDuration) * 100
-        )
+            // Calcula as porcentagens para cada estágio
+            val deepSleepMs = stageDurations[SleepStageType.DEEP] ?: 0.0
+            val remSleepMs = stageDurations[SleepStageType.REM] ?: 0.0
+            val lightSleepMs = stageDurations[SleepStageType.LIGHT] ?: 0.0
+            
+            // Calcula as porcentagens garantindo que estejam entre 0 e 100
+            val deepSleepPercentage = ((deepSleepMs / totalSleepDuration) * 100.0).coerceIn(0.0, 100.0)
+            val remSleepPercentage = ((remSleepMs / totalSleepDuration) * 100.0).coerceIn(0.0, 100.0)
+            val lightSleepPercentage = ((lightSleepMs / totalSleepDuration) * 100.0).coerceIn(0.0, 100.0)
+            
+            // Calcula a eficiência do sono usando o SleepMetrics
+            val calculatedEfficiency = SleepMetrics.calculateSleepEfficiency(
+                stages, 
+                Duration.ofMillis(totalSleepDuration)
+            )
+            
+            // Garante que a eficiência esteja entre 0 e 100
+            val safeEfficiency = calculatedEfficiency.coerceIn(0, 100).toDouble()
+
+            return this.copy(
+                deepSleepPercentage = deepSleepPercentage,
+                remSleepPercentage = remSleepPercentage,
+                lightSleepPercentage = lightSleepPercentage,
+                efficiency = safeEfficiency
+            )
+        } catch (e: Exception) {
+            // Em caso de erro, retorna a instância atual com valores zerados
+            return this.copy(
+                deepSleepPercentage = 0.0,
+                remSleepPercentage = 0.0,
+                lightSleepPercentage = 0.0,
+                efficiency = 0.0
+            )
+        }
     }
 
     companion object {

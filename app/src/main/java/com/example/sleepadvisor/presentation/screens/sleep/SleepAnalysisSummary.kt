@@ -5,7 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -29,11 +29,11 @@ import java.time.format.DateTimeFormatter
  */
 @Composable
 fun SleepAnalysisSummary(
-    lastSession: SleepSession?,
+    @Suppress("UNUSED_PARAMETER") lastSession: SleepSession?,
     weeklyScore: Int?,
     weeklyQuality: String?,
     recommendations: SleepRecommendations?,
-    trendAnalysis: SleepTrendAnalysis?,
+    @Suppress("UNUSED_PARAMETER") trendAnalysis: SleepTrendAnalysis?,
     onViewDetailedAnalysis: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -68,7 +68,7 @@ fun SleepAnalysisSummary(
                     )
                     
                     Icon(
-                        imageVector = Icons.Default.KeyboardArrowRight,
+                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
                         contentDescription = null
                     )
                 }

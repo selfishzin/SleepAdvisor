@@ -217,7 +217,7 @@ class GenerateSleepRecommendationsUseCase @Inject constructor() {
         positiveReinforcements: MutableList<String>
     ) {
         // Adicionar recomendações da análise de tendências
-        trendAnalysis.recommendations.forEach { recommendation ->
+        trendAnalysis.recommendations?.forEach { recommendation ->
             if (recommendation.contains("jet lag social") || 
                 recommendation.contains("consistência") ||
                 recommendation.contains("diminuindo")) {
@@ -228,16 +228,21 @@ class GenerateSleepRecommendationsUseCase @Inject constructor() {
         }
         
         // Adicionar reforço positivo se a consistência for boa
-        if (trendAnalysis.consistencyScore >= 75) {
-            positiveReinforcements.add("Sua consistência de sono é ${trendAnalysis.consistencyLevel.lowercase()} (${trendAnalysis.consistencyScore}/100). Manter horários regulares é fundamental para um sono de qualidade!")
+        trendAnalysis.consistencyScore?.let { score ->
+            if (score >= 75) {
+                val level = trendAnalysis.consistencyLevel?.lowercase() ?: "boa"
+                positiveReinforcements.add("Sua consistência de sono é $level ($score/100). Manter horários regulares é fundamental para um sono de qualidade!")
+            }
         }
         
         // Adicionar informação sobre duração média
-        val hours = trendAnalysis.averageSleepDuration.toHours()
-        val minutes = trendAnalysis.averageSleepDuration.toMinutesPart()
-        
-        if (hours >= 7 && hours <= 9) {
-            positiveReinforcements.add("Sua duração média de sono é de ${hours}h${minutes}min, dentro da faixa recomendada de 7-9 horas para adultos.")
+        trendAnalysis.averageSleepDuration?.let { duration ->
+            val hours = duration.toHours()
+            val minutes = duration.toMinutesPart()
+            
+            if (hours >= 7 && hours <= 9) {
+                positiveReinforcements.add("Sua duração média de sono é de ${hours}h${minutes}min, dentro da faixa recomendada de 7-9 horas para adultos.")
+            }
         }
     }
     
@@ -278,7 +283,9 @@ class GenerateSleepRecommendationsUseCase @Inject constructor() {
         trendAnalysis: SleepTrendAnalysis?
     ): Pair<String, String> {
         // Se houver análise de tendências, usar os horários médios como base
-        if (trendAnalysis != null && trendAnalysis.averageBedtime.isNotEmpty() && trendAnalysis.averageWakeTime.isNotEmpty()) {
+        if (trendAnalysis != null && 
+            !trendAnalysis.averageBedtime.isNullOrEmpty() && 
+            !trendAnalysis.averageWakeTime.isNullOrEmpty()) {
             // Ajustar para garantir 7-8 horas de sono
             try {
                 val avgBedtime = LocalTime.parse(trendAnalysis.averageBedtime, timeFormatter)

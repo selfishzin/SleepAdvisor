@@ -31,16 +31,20 @@ fun SleepSessionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    @Suppress("UNUSED_VARIABLE")
     val context = LocalContext.current
+    // Contexto mantido para possível uso futuro
     val spacing = LocalSpacing.current
     val duration = Duration.between(session.startTime, session.endTime)
     val hours = duration.toHours()
-    val minutes = duration.toMinutes() % 60
+    val minutes = duration.toMinutes().toInt() % 60
     
     // Formatar a data para exibição
     val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm", Locale.getDefault())
     val formattedStartTime = session.startTime.atZone(ZoneId.systemDefault()).format(dateFormatter)
+    @Suppress("UNUSED_VARIABLE")
     val formattedEndTime = session.endTime.atZone(ZoneId.systemDefault()).format(dateFormatter)
+    // Variável mantida para possível uso futuro
     
     SleepCard(
         modifier = modifier,
@@ -119,7 +123,7 @@ fun SleepSessionCard(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "${((session.efficiency ?: 0.8) * 100).toInt()}",
+                        text = "${(session.efficiency ?: 80.0).toInt().coerceIn(0, 100)}",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold

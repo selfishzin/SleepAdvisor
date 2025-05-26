@@ -1,10 +1,12 @@
 package com.example.sleepadvisor.domain.usecase
 
+import com.example.sleepadvisor.domain.model.SleepMetrics
 import com.example.sleepadvisor.domain.model.SleepQualityAnalysis
 import com.example.sleepadvisor.domain.model.SleepSession
 import com.example.sleepadvisor.domain.model.SleepStageType
 import java.time.Duration
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 /**
  * Caso de uso responsável por analisar a qualidade do sono com base em algoritmos avançados.
@@ -64,107 +66,121 @@ class AnalyzeSleepQualityUseCase @Inject constructor() {
      * - Número de despertares durante a noite
      * - Frequência cardíaca (quando disponível)
      */
+    /**
+     * Calcula a pontuação de qualidade do sono (0-100) baseada na abordagem do Mi Fitness.
+     * O cálculo considera:
+     * - Eficiência do sono (tempo dormindo / tempo na cama)
+     * - Duração total do sono
+     * - Distribuição dos estágios do sono
+     * - Número de despertares
+     */
     private fun calculateSleepScore(session: SleepSession): Int {
         if (session.duration.toMinutes() <= 0) return 0
         
-        // Base score começa em 75 (padrão médio)
-        var score = 75.0
-        
-        // 1. Eficiência real do sono (tempo dormindo / tempo total na cama)
-        val totalMinutes = session.duration.toMinutes().toDouble()
-        val awakeMinutes = if (session.stages.isNotEmpty()) {
-            session.stages
-                .filter { it.type == SleepStageType.AWAKE }
-                .fold(Duration.ZERO) { acc, stage -> acc.plus(stage.duration) }
-                .toMinutes().toDouble()
+        // 1. Calcular eficiência do sono (0-35 pontos)
+        val efficiency = if (session.stages.isNotEmpty()) {
+            SleepMetrics.calculateSleepEfficiency(session.stages, session.duration).toDouble()
         } else {
-            // Estimativa baseada no número de despertares
-            session.wakeDuringNightCount * 10.0 // Estimativa de 10 minutos por despertar
+            // Se não houver estágios, estimar com base em despertares
+            val totalMinutes = session.duration.toMinutes().toDouble()
+            val awakeMinutes = session.wakeDuringNightCount * 10.0 // Estimativa de 10 minutos por despertar
+            
+            if (totalMinutes > 0) {
+                ((totalMinutes - awakeMinutes) / totalMinutes) * 100
+            } else 0.0
         }
         
-        val sleepEfficiency = if (totalMinutes > 0) {
-            ((totalMinutes - awakeMinutes) / totalMinutes) * 100
-        } else 0.0
-        
-        // Ajustar score base pela eficiência real
-        score = sleepEfficiency
-        
-        // 2. Distribuição dos estágios do sono
-        // Ideal: Profundo > 20%, REM > 20%, Leve ~55%
-        if (session.stages.isNotEmpty()) {
-            // Bônus/penalidade para sono profundo
-            val deepSleepFactor = when {
-                session.deepSleepPercentage >= 25.0 -> 10.0  // Excelente
-                session.deepSleepPercentage >= 20.0 -> 5.0   // Bom
-                session.deepSleepPercentage >= 15.0 -> 0.0   // Adequado
-                session.deepSleepPercentage >= 10.0 -> -5.0  // Abaixo do ideal
-                else -> -10.0                                // Muito baixo
-            }
-            
-            // Bônus/penalidade para sono REM
-            val remSleepFactor = when {
-                session.remSleepPercentage >= 25.0 -> 10.0   // Excelente
-                session.remSleepPercentage >= 20.0 -> 5.0    // Bom
-                session.remSleepPercentage >= 15.0 -> 0.0    // Adequado
-                session.remSleepPercentage >= 10.0 -> -5.0   // Abaixo do ideal
-                else -> -10.0                                // Muito baixo
-            }
-            
-            // Bônus/penalidade para equilíbrio entre estágios
-            val balanceFactor = if (
-                session.lightSleepPercentage in 50.0..60.0 &&
-                session.deepSleepPercentage >= 20.0 &&
-                session.remSleepPercentage >= 20.0
-            ) {
-                5.0  // Distribuição ideal de estágios
-            } else {
-                0.0
-            }
-            
-            score += deepSleepFactor + remSleepFactor + balanceFactor
-        }
-        
-        // 3. Duração total do sono (ideal: 7-9 horas)
-        val totalHours = session.duration.toHours().toDouble()
-        val durationFactor = when {
-            totalHours >= 7.0 && totalHours <= 9.0 -> 5.0   // Ideal
-            totalHours >= 6.0 && totalHours < 7.0 -> 0.0    // Aceitável
-            totalHours > 9.0 && totalHours <= 10.0 -> 0.0   // Aceitável
-            totalHours > 10.0 -> -5.0                       // Muito longo
-            totalHours >= 5.0 && totalHours < 6.0 -> -5.0   // Curto
-            totalHours < 5.0 -> -10.0                       // Muito curto
+        // Pontuação baseada na eficiência (0-35 pontos)
+        val efficiencyScore = when {
+            efficiency >= 98.0 -> 35.0
+            efficiency >= 95.0 -> 33.0
+            efficiency >= 90.0 -> 30.0
+            efficiency >= 85.0 -> 25.0
+            efficiency >= 80.0 -> 20.0
+            efficiency >= 75.0 -> 15.0
+            efficiency >= 70.0 -> 10.0
+            efficiency >= 65.0 -> 5.0
             else -> 0.0
         }
-        score += durationFactor
         
-        // 4. Penalidade por despertares
-        val wakeCountFactor = when (session.wakeDuringNightCount) {
-            0 -> 5.0    // Excelente - sem despertares
-            1 -> 2.0    // Muito bom - um despertar é normal
-            2 -> 0.0    // Normal
-            3 -> -3.0   // Abaixo do ideal
-            4 -> -5.0   // Ruim
-            else -> -10.0  // Muito ruim - sono muito fragmentado
+        // 2. Pontuação baseada na duração do sono (0-35 pontos)
+        val totalHours = session.duration.toHours().toDouble()
+        val durationScore = when {
+            totalHours >= 8.5 && totalHours <= 9.5 -> 35.0  // Ideal para adultos
+            totalHours >= 7.5 && totalHours < 8.5 -> 32.0  // Muito bom
+            totalHours >= 6.5 && totalHours < 7.5 -> 28.0  // Bom
+            totalHours >= 5.5 && totalHours < 6.5 -> 22.0  // Regular
+            totalHours >= 4.5 && totalHours < 5.5 -> 15.0  // Curto
+            totalHours > 9.5 && totalHours <= 10.5 -> 30.0 // Longo, mas aceitável
+            totalHours > 10.5 -> 25.0                      // Muito longo
+            else -> 10.0                                   // Muito curto
         }
-        score += wakeCountFactor
         
-        // Garantir que a pontuação fique entre 0 e 100
-        return score.coerceIn(0.0, 100.0).toInt()
+        // 3. Pontuação baseada nos estágios do sono (0-30 pontos)
+        var stageScore = 0.0
+        if (session.stages.isNotEmpty()) {
+            // Pontuação para sono profundo (0-15 pontos)
+            val deepSleepScore = when (session.deepSleepPercentage) {
+                in 20.0..100.0 -> 15.0  // Excelente (20%+)
+                in 15.0..20.0 -> 12.0   // Bom
+                in 10.0..15.0 -> 8.0     // Regular
+                in 5.0..10.0 -> 4.0      // Baixo
+                else -> 0.0              // Muito baixo
+            }
+            
+            // Pontuação para sono REM (0-15 pontos)
+            val remSleepScore = when (session.remSleepPercentage) {
+                in 25.0..100.0 -> 15.0  // Excelente (25%+)
+                in 20.0..25.0 -> 12.0   // Bom
+                in 15.0..20.0 -> 8.0     // Regular
+                in 10.0..15.0 -> 4.0     // Baixo
+                else -> 0.0              // Muito baixo
+            }
+            
+            stageScore = deepSleepScore + remSleepScore
+        } else {
+            // Se não houver dados de estágios, dar uma pontuação média
+            stageScore = 20.0
+        }
+        
+        // 4. Consistência do horário de dormir/acordar (se disponível)
+        val consistencyFactor = 0.0 // TODO: Implementar análise de consistência
+        
+        // 5. Frequência cardíaca noturna (se disponível)
+        val heartRateFactor = 0.0 // TODO: Implementar análise de frequência cardíaca
+        
+        // 6. Número de despertares (se disponível)
+        val wakeFactor = when (session.wakeDuringNightCount) {
+            0 -> 100.0  // Sem despertares - pontuação máxima
+            1 -> 80.0   // 1 despertar - bom
+            2 -> 60.0   // 2 despertares - aceitável
+            3 -> 40.0   // 3 despertares - abaixo da média
+            else -> 20.0 // Muitos despertares - baixa pontuação
+        }
+        
+        // Calcular pontuação final com pesos
+        // Eficiência: 70%
+        // Estágios do sono: 20%
+        // Duração: 10%
+        // Despertares: 10% (máximo de 10 pontos)
+        val weightedScore = (efficiencyScore * 0.7) + 
+                          (stageScore * 0.2) + 
+                          (durationScore * 0.1) + 
+                          (wakeFactor * 0.1)
+        
+        // Ajustar para garantir que a pontuação esteja entre 0 e 100
+        val finalScore = weightedScore.coerceIn(0.0, 100.0)
+        
+        return finalScore.roundToInt()
     }
     
     /**
      * Determina a classificação verbal da qualidade do sono com base na pontuação.
+     * @deprecated Use SleepMetrics.getSleepQualityLabel() em vez disso
      */
+    @Deprecated("Use SleepMetrics.getSleepQualityLabel() instead")
     private fun getSleepQualityLabel(score: Int): String {
-        return when {
-            score >= 90 -> "Excelente"
-            score >= 80 -> "Muito Boa"
-            score >= 70 -> "Boa"
-            score >= 60 -> "Regular"
-            score >= 50 -> "Razoável"
-            score >= 40 -> "Insatisfatória"
-            else -> "Ruim"
-        }
+        return SleepMetrics.getSleepQualityLabel(score)
     }
     
     /**
@@ -177,35 +193,46 @@ class AnalyzeSleepQualityUseCase @Inject constructor() {
         
         val analysis = StringBuilder()
         
+        // Usar SleepMetrics para cálculos consistentes
+        if (session.stages.isEmpty()) {
+            return "Dados insuficientes para análise dos estágios do sono."
+        }
+        
+        // Obter porcentagens usando SleepMetrics
+        val stagePercentages = SleepMetrics.calculateAllStagePercentages(session.stages)
+        val deepSleepPercentage = stagePercentages[SleepStageType.DEEP] ?: 0.0
+        val remSleepPercentage = stagePercentages[SleepStageType.REM] ?: 0.0
+        val lightSleepPercentage = stagePercentages[SleepStageType.LIGHT] ?: 0.0
+        
         // Analisar sono profundo
         when {
-            session.deepSleepPercentage >= 25.0 -> 
-                analysis.append("Excelente quantidade de sono profundo (${session.deepSleepPercentage.toInt()}%), " +
+            deepSleepPercentage >= 25.0 -> 
+                analysis.append("Excelente quantidade de sono profundo (${deepSleepPercentage.toInt()}%), " +
                                "favorecendo a recuperação física e imunidade. ")
-            session.deepSleepPercentage >= 20.0 -> 
-                analysis.append("Boa quantidade de sono profundo (${session.deepSleepPercentage.toInt()}%), " +
+            deepSleepPercentage >= 20.0 -> 
+                analysis.append("Boa quantidade de sono profundo (${deepSleepPercentage.toInt()}%), " +
                                "adequada para recuperação física. ")
-            session.deepSleepPercentage >= 15.0 -> 
-                analysis.append("Quantidade adequada de sono profundo (${session.deepSleepPercentage.toInt()}%), " +
+            deepSleepPercentage >= 15.0 -> 
+                analysis.append("Quantidade adequada de sono profundo (${deepSleepPercentage.toInt()}%), " +
                                "mas poderia ser melhor. ")
-            session.deepSleepPercentage < 15.0 -> 
-                analysis.append("Quantidade insuficiente de sono profundo (${session.deepSleepPercentage.toInt()}%), " +
+            else -> 
+                analysis.append("Quantidade insuficiente de sono profundo (${deepSleepPercentage.toInt()}%), " +
                                "o que pode afetar sua recuperação física e imunidade. ")
         }
         
         // Analisar sono REM
         when {
-            session.remSleepPercentage >= 25.0 -> 
-                analysis.append("Excelente quantidade de sono REM (${session.remSleepPercentage.toInt()}%), " +
+            remSleepPercentage >= 25.0 -> 
+                analysis.append("Excelente quantidade de sono REM (${remSleepPercentage.toInt()}%), " +
                                "favorecendo a consolidação da memória e regulação emocional. ")
-            session.remSleepPercentage >= 20.0 -> 
-                analysis.append("Boa quantidade de sono REM (${session.remSleepPercentage.toInt()}%), " +
+            remSleepPercentage >= 20.0 -> 
+                analysis.append("Boa quantidade de sono REM (${remSleepPercentage.toInt()}%), " +
                                "adequada para funções cognitivas. ")
-            session.remSleepPercentage >= 15.0 -> 
-                analysis.append("Quantidade adequada de sono REM (${session.remSleepPercentage.toInt()}%), " +
+            remSleepPercentage >= 15.0 -> 
+                analysis.append("Quantidade adequada de sono REM (${remSleepPercentage.toInt()}%), " +
                                "mas poderia ser melhor. ")
-            session.remSleepPercentage < 15.0 -> 
-                analysis.append("Quantidade insuficiente de sono REM (${session.remSleepPercentage.toInt()}%), " +
+            else -> 
+                analysis.append("Quantidade insuficiente de sono REM (${remSleepPercentage.toInt()}%), " +
                                "o que pode afetar sua memória e processamento emocional. ")
         }
         

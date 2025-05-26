@@ -1,5 +1,6 @@
 package com.example.sleepadvisor.domain.service
 
+import com.example.sleepadvisor.domain.model.SleepMetrics
 import com.example.sleepadvisor.domain.model.SleepSession
 import com.example.sleepadvisor.domain.model.SleepSource
 import com.example.sleepadvisor.domain.model.SleepStage
@@ -22,18 +23,18 @@ import kotlin.math.abs
 import javax.inject.Inject
 import javax.inject.Singleton
 
+private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
 /**
  * Serviço que utiliza IA avançada para gerar análises detalhadas e dicas personalizadas de sono
  * Integra dados do Health Connect e utiliza algoritmos de simulação para estágios do sono
  */
 @Singleton
 class SleepAIService @Inject constructor(
-    private val okHttpClient: OkHttpClient,
-    private val gson: Gson,
-    private val calculateCustomSleepStagesUseCase: CalculateCustomSleepStagesUseCase
+    @Suppress("UNUSED_PARAMETER") private val okHttpClient: OkHttpClient,
+    @Suppress("UNUSED_PARAMETER") private val gson: Gson,
+    @Suppress("UNUSED_PARAMETER") private val calculateCustomSleepStagesUseCase: CalculateCustomSleepStagesUseCase
 ) {
-    private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-    private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     
     /**
      * Gera dicas personalizadas baseadas nos dados de sono da última semana
@@ -270,26 +271,21 @@ class SleepAIService @Inject constructor(
         val totalMinutes = session.duration.toMinutes().toDouble()
         
         if (processedStages.isNotEmpty()) {
-            val lightMinutes = processedStages.filter { it.type == SleepStageType.LIGHT }
-                .fold(Duration.ZERO) { acc, stage -> acc.plus(stage.duration) }
-                .toMinutes()
-                
-            val deepMinutes = processedStages.filter { it.type == SleepStageType.DEEP }
-                .fold(Duration.ZERO) { acc, stage -> acc.plus(stage.duration) }
-                .toMinutes()
-                
-            val remMinutes = processedStages.filter { it.type == SleepStageType.REM }
-                .fold(Duration.ZERO) { acc, stage -> acc.plus(stage.duration) }
-                .toMinutes()
-                
-            val awakeMinutes = processedStages.filter { it.type == SleepStageType.AWAKE }
-                .fold(Duration.ZERO) { acc, stage -> acc.plus(stage.duration) }
-                .toMinutes()
+            // Usa o SleepMetrics para calcular as porcentagens de cada estágio
+            val stagePercentages = SleepMetrics.calculateAllStagePercentages(processedStages)
             
-            val lightPercentage = if (totalMinutes > 0) (lightMinutes.toDouble() / totalMinutes) * 100 else 0.0
-            val deepPercentage = if (totalMinutes > 0) (deepMinutes.toDouble() / totalMinutes) * 100 else 0.0
-            val remPercentage = if (totalMinutes > 0) (remMinutes.toDouble() / totalMinutes) * 100 else 0.0
-            val awakePercentage = if (totalMinutes > 0) (awakeMinutes.toDouble() / totalMinutes) * 100 else 0.0
+            // Calcula os minutos de cada estágio
+            val stageDurations = SleepMetrics.calculateTimeByStage(processedStages)
+            
+            val lightMinutes = stageDurations[SleepStageType.LIGHT]?.toMinutes() ?: 0L
+            val deepMinutes = stageDurations[SleepStageType.DEEP]?.toMinutes() ?: 0L
+            val remMinutes = stageDurations[SleepStageType.REM]?.toMinutes() ?: 0L
+            val awakeMinutes = stageDurations[SleepStageType.AWAKE]?.toMinutes() ?: 0L
+            
+            val lightPercentage = stagePercentages[SleepStageType.LIGHT] ?: 0.0
+            val deepPercentage = stagePercentages[SleepStageType.DEEP] ?: 0.0
+            val remPercentage = stagePercentages[SleepStageType.REM] ?: 0.0
+            val awakePercentage = stagePercentages[SleepStageType.AWAKE] ?: 0.0
             
             return SleepStagesDetail(
                 light = formatDuration(Duration.ofMinutes(lightMinutes)),
@@ -393,17 +389,11 @@ class SleepAIService @Inject constructor(
 
     /**
      * Obtém a classificação verbal da qualidade do sono
+     * @deprecated Use SleepMetrics.getSleepQualityLabel() em vez disso
      */
+    @Deprecated("Use SleepMetrics.getSleepQualityLabel() instead")
     private fun getSleepQualityLabel(score: Int): String {
-        return when {
-            score >= 90 -> "Excelente"
-            score >= 80 -> "Muito Boa"
-            score >= 70 -> "Boa"
-            score >= 60 -> "Regular"
-            score >= 50 -> "Razoável"
-            score >= 40 -> "Insatisfatória"
-            else -> "Ruim"
-        }
+        return SleepMetrics.getSleepQualityLabel(score)
     }
 
     /**
